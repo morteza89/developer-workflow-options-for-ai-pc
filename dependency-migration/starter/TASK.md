@@ -1,0 +1,19 @@
+# Ticket: Complete the Native Pydantic v2 Migration
+
+The installed dependency upgrade broke this expense service. Migrate the source to native Pydantic v2 while preserving this contract. Add focused regression tests to tests/test_generated.py, run the tests, repair failures, then submit.
+
+Editable files: app/schemas.py, app/settings.py, app/routes.py, tests/test_generated.py. Do not change dependencies or other files. No pydantic.v1, compatibility namespace, downgrade, legacy validator/root_validator/Config, dict/parse_obj/from_orm calls on models, disabling validation, or hardcoded replacement service. Use native v2 settings, validators, model configuration, attribute loading, and serialization. The three Pydantic models remain the request/response boundary.
+
+## Frozen API Contract (draft 0.1)
+
+- GET /health returns 200 and {"status":"ok","currency":"USD"}. EXPENSE_CURRENCY overrides currency. EXPENSE_MAX_AMOUNT_CENTS is a positive integer limit, default 10000000; POST amounts above it return 422. Settings must parse these environment variables using pydantic-settings. Preserve the original per-request settings reload: changes to environment variables between requests take effect without restarting the service.
+- POST /expenses returns 201 and the normalized expense object, without persistence or an ID. Required inputs: externalId (nonempty string), merchantCode (string or integer), amountCents (strict integer, not bool, 1 through 10000000), category (personal or work). Normalize category by stripping whitespace and lowercasing before validation. Integer merchant codes such as 42 serialize as strings such as "42".
+- Also accept Python field names external_id, merchant_code, amount_cents in place of their aliases. Requests using both names simultaneously are outside the contract. Always serialize with aliases and preserve integer amountCents. Unknown request fields return 422.
+- receipt and notes accept strings, null, or omission. Omission defaults to null. Every POST response includes both keys. A normalized work expense above 10000 cents requires a nonempty receipt; 10000 needs none. Personal expenses need no receipt. An empty receipt is invalid when required; whitespace-only receipt strings are accepted. Invalid input or missing required fields returns 422; exact library error wording is not contractual.
+- PATCH /expenses/preview accepts only optional notes; return 200 with only explicitly supplied fields. {} stays {}, {"notes":null} stays {"notes":null}. Unknown fields return 422. It does not persist changes.
+- GET /expenses/7 loads the supplied attribute-based record and returns 200 with exactly {"expenseId":7,"externalId":"seed-7","merchantCode":"42","amountCents":12500,"category":"work","receipt":"R-7","notes":null}. Other integer IDs return 404. Retain object loading, not a hardcoded JSON replacement.
+- Float/bool merchant codes and numeric notes/receipt/IDs are outside this contract. Values/types not specified above are not scored.
+
+## Tools and Checks
+
+The environment is ready, offline, and contains pytest and bump-pydantic. Run `python -m pytest -q -p no:cacheprovider`. You may run `bump-pydantic --log-file /tmp/bump-pydantic.log app`; its default log.txt would create an unpermitted submission file. Temporary tool logs belong in /tmp, not /task. Read MIGRATION.md. Do not install packages or access the network. You have 240 seconds for all model calls, editing, visible tests, and repairs. Keep each response within 2048 tokens by splitting long file writes into small complete commands. Submit when done, or work will stop at the deadline. Only files actually written are evaluated. Protected contract/native checks and generated tests run after work stops, even when the migration is incomplete. Their results are not returned for further repairs. Protected test source is not available in the task container.

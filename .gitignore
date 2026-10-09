@@ -1,0 +1,12 @@
+.venv*/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+/.vscode/settings.json
+/models/*
+!/models/start-27b-article.cmd
+/ovms_downloaded/
+/dependency-migration/artifacts/*
+!/dependency-migration/artifacts/freeze-240s-v3.json
+dependency-migration/profiles/*.private.json
+.env

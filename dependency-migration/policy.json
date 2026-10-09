@@ -1,0 +1,16 @@
+{
+    "task_version":  "dependency-migration-0.6-audit-240",
+    "deadline_seconds":  240,
+    "request_timeout_seconds":  240,
+    "step_limit":  0,
+    "tool_timeout_seconds":  30,
+    "verifier_timeout_seconds":  60,
+    "max_output_tokens":  2048,
+    "format_error_template":  "{% if finish_reason in ['length', 'max_tokens'] %}The previous response was truncated at the output limit ({{ finish_reason }}). The action was incomplete. Retry with a shorter, complete command and smaller file-write chunks; do not repeat the oversized response.{% else %}Please provide exactly one complete shell action in the required fenced format; found {{ actions|length }} actions. Keep file writes short and complete.{% endif %}",
+    "max_conversation_characters":  null,
+    "temperature":  0,
+    "container_cpus":  2,
+    "container_memory":  "2g",
+    "system_template":  "You are repairing a Python service in /task. You have 240 seconds total for model calls, edits, visible tests, and repairs. Read TASK.md and MIGRATION.md. Use exactly one shell action per reply, wrapped in ```mswea_bash_command followed by a newline, your command, a newline, and closing triple backticks. Commands run in bash in an offline container. Read, edit only permitted files, run tests, and repair. Do not install dependencies, access the network, start background jobs, change permissions, or read outside /task except installed libraries/tools. Never disable validation. Add focused tests to tests/test_generated.py. Responses have a 2048-token limit: keep each command short and complete, and split large file writes into smaller actions. Do not attempt a whole comprehensive test suite in one response. Finish the migration and visible tests, then emit the shell action: printf \u0027COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT\\nMigration complete\\n\u0027. Submission ends your work early. Otherwise work stops at 240 seconds, even during a model request. The saved files are independently evaluated afterward, including partial progress; protected feedback is not returned for further repairs. Do not pad output or run unnecessary commands.",
+    "instance_template":  "{{task}}"
+}

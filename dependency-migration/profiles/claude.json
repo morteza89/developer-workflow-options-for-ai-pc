@@ -1,0 +1,13 @@
+{
+  "label": "ptl-claude-fixed",
+  "provider": "anthropic",
+  "base_url": "https://api.anthropic.com",
+  "api_key_env": "ANTHROPIC_API_KEY",
+  "model": "REQUIRED_FIXED_CLAUDE_MODEL_ID",
+  "expected_returned_model": "REQUIRED_FIXED_CLAUDE_MODEL_ID",
+  "extra_body": {},
+  "qualified": false,
+  "host": {"sku": "REQUIRED", "ram_gb": 32, "os": "REQUIRED", "driver": "REQUIRED", "bios": "REQUIRED", "power_mode": "REQUIRED"},
+  "inference": {"runtime": "Anthropic Messages API", "runtime_sha256": "provider-managed", "model_revision": "REQUIRED_FIXED_CLAUDE_MODEL_ID", "export_sha256": "provider-managed", "template_sha256": "provider-managed", "device": "provider-managed", "context_limit": null, "cache_policy": "No explicit cache markers; record returned cache usage", "cold_start_seconds": null, "peak_memory_gb": null, "offload_evidence": "provider-managed", "no_cloud_fallback_evidence": "single fixed Anthropic endpoint"},
+  "rate_card": {"source_url": "https://platform.claude.com/docs/en/about-claude/pricing", "saved_at": "REQUIRED", "service_tier": "standard", "input_per_million": null, "output_per_million": null, "cache_read_per_million": null, "cache_write_5m_per_million": null, "cache_write_1h_per_million": null}
+}
