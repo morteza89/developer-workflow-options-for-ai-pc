@@ -113,6 +113,8 @@ Then follow [README.md](README.md) for locked environments, fixture checks, Linu
 
 ## Current Host: Working Article 27B
 
+For a live Windows demo after setup, use the [Demo Controller](README.md#demo-controller). It starts the chosen local server and shows readiness. Its OpenAI option uses the API key inherited from the PowerShell process that launched it; it does not save or reveal the key. The controller runs unscored pilots only.
+
 The user's [tested notebook](https://github.com/morteza89/vscode-copilot-local-model-ovms) uses **Morteza89/qwen3.8-27b-int4-ov**, revision `0b379da0a1b2aa7987693b253724f19ad82928f1`. This is the tested article export. It exists in this workspace, but `models/` is Git-ignored; on a fresh clone, follow step 3 to download the exact revision. Do not substitute another export.
 
 If its server is already running, leave it running. Otherwise, with no other OVMS server using port 8000, start the saved launcher from a clean PowerShell terminal:

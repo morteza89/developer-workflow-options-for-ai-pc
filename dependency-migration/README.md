@@ -25,6 +25,18 @@ The next optional local test is unscored, from this folder in clean PowerShell, 
 
 Keep `qualified: false` until pilot review and required host/profile measurements are complete. Do not run scored loops yet. Normally let the deadline finish the run so the snapshot gets evaluated. Ctrl+C is emergency cancellation with available artifacts/usage retained and cleanup attempted; it does not guarantee a final snapshot. Shell actions retain a 30-second timeout and verifier execution phases a 60-second timeout. Preparation, snapshot overhead, evaluation and cleanup mean the complete command can take longer than 10 minutes.
 
+## Demo Controller
+
+For a live Windows demo, double-click [Run-Demo.cmd](Run-Demo.cmd), or run it from this folder in PowerShell:
+
+```powershell
+.\Run-Demo.cmd
+```
+
+Select **27B local**, **8B local**, or **GPT API**. The controller can start/stop either supported local server, show server readiness and output, test the selected endpoint, run an unscored v8 pilot, refresh the grouped JSON report, and open the latest attempt. After running the models you want to compare, click **Generate comparison report** to create and open a Markdown report with model coverage, device/runtime, summary metrics, and per-attempt test, timing, usage, and cost details. It includes only attempts whose saved freeze matches the GUI's selected freeze, excludes offline/mock attempts, and flags configured models with no matching attempts. It creates private profiles from tracked templates only when private profiles are absent; review host values before scored studies.
+
+For OpenAI, set `OPENAI_API_KEY` in PowerShell and launch `Run-Demo.cmd` from that same window. The GUI inherits it but never prompts for, displays, or saves it. OpenAI warmups and pilots are billable; 600 seconds limits model work, not API charges. Local runs use OVMS only and do not use the API key. The controller uses Windows PowerShell 5.1 for WinForms.
+
 ## Workflow
 
 ```mermaid

@@ -6,6 +6,7 @@ import subprocess
 import pytest
 
 import bench
+import comparison_report
 import qualify
 
 
@@ -590,3 +591,63 @@ def test_report_retains_partial_deadline_evaluation(tmp_path):
     assert row["evaluation_results"][0]["regression_issue"] == "missing_regression_assertions"
     assert row["deadline_seconds"] == 600
     assert row["accepted_within_budget"] == 0
+
+
+def test_comparison_report_filters_freeze_and_summarizes_models(tmp_path):
+    frozen = {"created_at": "current", "image": "sha256:current", "hashes": {"task": "current"}}
+    records = [
+        ("27b", "local", "qwen3.8-27b-ov", True, 0, 39, 39),
+        ("8b", "local", "OpenVINO/Qwen3-8B-int8-ov", False, 0, 39, 0),
+        ("openai", "openai", "gpt-6.1-sol", True, 0.25, 39, 27),
+    ]
+    for name, provider, model, accepted, api_fee, contract_passed, generated_passed in records:
+        attempt = tmp_path / f"attempt-{name}"
+        attempt.mkdir()
+        bench.save(attempt / "freeze.json", frozen)
+        bench.save(attempt / "result.json", {
+            "attempt_id": attempt.name,
+            "label": name,
+            "provider": provider,
+            "model": model,
+            "task_hash": "current-task",
+            "profile_hash": f"{name}-profile",
+            "scored": False,
+            "mock": False,
+            "accepted": accepted,
+            "category": "accepted" if accepted else "test_failure",
+            "exit_status": "Submitted" if accepted else "deadline",
+            "agent_seconds": 30,
+            "through_verification_seconds": 32,
+            "api_fee_usd": api_fee,
+            "native_usage_totals": {"input_tokens": 1000, "output_tokens": 200},
+            "verification": {"test_results": {
+                "contract": {"passed": contract_passed, "total": 39},
+                "generated": {"passed": generated_passed, "total": 27},
+            }},
+        })
+
+    old = tmp_path / "attempt-old"
+    old.mkdir()
+    bench.save(old / "freeze.json", {"created_at": "old"})
+    bench.save(old / "result.json", {"attempt_id": old.name, "label": "old"})
+    profile_paths = []
+    for index, (name, provider, model, *_rest) in enumerate(records):
+        path = tmp_path / f"profile-{index}.json"
+        device = "provider-managed" if provider == "openai" else "GPU"
+        bench.save(path, {
+            "label": name,
+            "provider": provider,
+            "model": model,
+            "inference": {"device": device, "runtime": "test-runtime"},
+        })
+        profile_paths.append(path)
+
+    report = comparison_report.render_report(tmp_path, frozen, profile_paths)
+    assert "Matching model attempts: 3; other saved attempts excluded: 1; matching mock attempts excluded: 0" in report
+    assert "| 8b | local / OpenVINO/Qwen3-8B-int8-ov | GPU; test-runtime | 1 | ready |" in report
+    assert "| openai | openai / gpt-6.1-sol | provider-managed; test-runtime | 1 | ready |" in report
+    assert "| openai | openai / gpt-6.1-sol | pilot | `current-task` | 1 | 1 | 1/1 (100%)" in report
+    assert "39/39" in report
+    assert "0/27" in report
+    assert "$0.2500" in report
+    assert "`attempt-old`" not in report
