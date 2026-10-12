@@ -2,15 +2,15 @@
 
 **To reproduce the working local model on another laptop:** follow [the Windows 27B replication guide](dependency-migration/MODELS.md#replicate-on-another-windows-laptop), then the [benchmark setup guide](dependency-migration/README.md). The current comparison policy uses a 600-second (10-minute) work budget and a new `freeze-600s-v8.json` package; older four-minute results remain historical.
 
-Start with [Dependency Migration](dependency-migration/README.md). It is the only implemented workflow. The agent gets **10 minutes (600 seconds)** to edit and test, then the saved files are independently evaluated, including partial progress. Current PTL pilots accepted the 27B local and OpenAI API runs; the 8B run was rejected. These are initial pilots, not a qualified or statistical comparison. See [the run matrix](dependency-migration/README.md) for details.
+Start with [Dependency Migration](dependency-migration/README.md) for the current local-model pilot and its 600-second policy. Option 3, [Security Repair](security-repair/README.md), is now implemented as a separate 240-second PyJWT backport task and has passed offline verifier qualification. No model comparison or scored run has been performed for Security Repair; this work does not imply acceptance of the Dependency Migration workflow.
 
 | Folder | Scope | State |
 |---|---|---|
 | [dependency-migration](dependency-migration/README.md) | Migrate a small expense service from Pydantic v1 to native v2 | Implemented; 600-second PTL pilots: 27B and OpenAI accepted, 8B rejected; repeated qualification runs pending |
-| [security-repair](security-repair/README.md) | PyJWT security backport | Reserved; await dependency-migration acceptance |
+| [security-repair](security-repair/README.md) | PyJWT security backport | Implemented; vulnerable/reference/negative controls qualified offline; model runs pending |
 | [regression-tests](regression-tests/README.md) | Requests URL regression tests | Reserved; await security-repair acceptance |
 
-The [handoff](AI_PC_WORKFLOW_HANDOFF.md) documents the current 600-second work budget, with no shorter success target. Evaluation/setup/cleanup are outside that budget. Historical attempt records and freezes retain their original values. Infrastructure/API/context errors and manual cancellation remain possible. The workflow order is unchanged.
+The [handoff](AI_PC_WORKFLOW_HANDOFF.md) documents the proposal and earlier 600-second work budget. Security Repair follows its task-specific 240-second policy. Evaluation/setup/cleanup are outside each work budget, and historical attempt records and freezes retain their original values. Infrastructure/API/context errors and manual cancellation remain possible.
 
 ## VS Code Agent
 

@@ -8,5 +8,7 @@ __pycache__/
 /ovms_downloaded/
 /dependency-migration/artifacts/*
 !/dependency-migration/artifacts/freeze-240s-v3.json
+/security-repair/artifacts/*
+!/security-repair/artifacts/freeze-240s-pyjwt-v4.json
 dependency-migration/profiles/*.private.json
 .env

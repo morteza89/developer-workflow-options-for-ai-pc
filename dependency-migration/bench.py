@@ -2,7 +2,6 @@
 
 import argparse
 import ast
-import base64
 from datetime import datetime, timezone
 import hashlib
 import importlib.metadata
@@ -10,7 +9,6 @@ import json
 import multiprocessing
 import os
 from pathlib import Path
-import shlex
 import shutil
 import statistics
 import subprocess
@@ -20,8 +18,35 @@ from urllib.parse import urlsplit
 import uuid
 import xml.etree.ElementTree as ET
 
-ROOT = Path(__file__).resolve().parent
-ALLOWED = ("app/schemas.py", "app/settings.py", "app/routes.py", "tests/test_generated.py")
+ENGINE_ROOT = Path(__file__).resolve().parent
+ROOT = ENGINE_ROOT
+DEFAULT_ALLOWED = ("app/schemas.py", "app/settings.py", "app/routes.py", "tests/test_generated.py")
+ALLOWED = DEFAULT_ALLOWED
+WORKFLOW = {}
+
+
+def configure_package(root):
+    global ROOT, ALLOWED, WORKFLOW
+    ROOT = Path(root).resolve()
+    if not ROOT.is_dir():
+        raise ValueError("Task package root must be an existing directory")
+    manifest_path = ROOT / "workflow.json"
+    if manifest_path.is_file():
+        WORKFLOW = load(manifest_path)
+        allowed = WORKFLOW.get("allowed_files")
+        safe_path = lambda value: isinstance(value, str) and value and not Path(value).is_absolute() and ".." not in Path(value).parts
+        if not isinstance(allowed, list) or not allowed or not all(safe_path(path) for path in allowed) or len(set(allowed)) != len(allowed):
+            raise ValueError("workflow.json must define safe relative allowed_files")
+        if not all(safe_path(path) for path in WORKFLOW.get("contract_tests", [])):
+            raise ValueError("workflow.json contract_tests must be safe relative paths")
+        if WORKFLOW.get("generated_test_path") is not None and not safe_path(WORKFLOW["generated_test_path"]):
+            raise ValueError("workflow.json generated_test_path must be a safe relative path")
+        if WORKFLOW.get("require_generated_test_to_fail_on_baseline") and not WORKFLOW.get("preserve_baseline_files"):
+            raise ValueError("Vulnerable-baseline checks require preserve_baseline_files")
+        ALLOWED = tuple(allowed)
+    else:
+        WORKFLOW = {}
+        ALLOWED = DEFAULT_ALLOWED
 
 
 def load(path):
@@ -38,8 +63,19 @@ def digest(path):
 
 def package_hashes():
     paths = [path for directory in ("starter", "reference", "grader") for path in (ROOT / directory).rglob("*") if path.is_file() and "__pycache__" not in path.parts and ".pytest_cache" not in path.parts]
-    paths += [ROOT / name for name in ("bench.py", "worker.py", "qualify.py", "policy.json", "Dockerfile", "requirements-v1.lock", "requirements-v2.lock", "requirements-runner.lock")]
-    return {path.relative_to(ROOT).as_posix(): digest(path) for path in sorted(paths)}
+    if ROOT == ENGINE_ROOT:
+        paths += [ROOT / name for name in ("bench.py", "worker.py", "qualify.py", "policy.json", "Dockerfile", "requirements-v1.lock", "requirements-v2.lock", "requirements-runner.lock")]
+    else:
+        paths += [path for path in ROOT.iterdir() if path.is_file() and path.name not in {".gitignore"}]
+        paths += [ENGINE_ROOT / name for name in ("bench.py", "worker.py", "requirements-runner.lock")]
+    hashes = {}
+    for path in sorted(set(paths)):
+        try:
+            relative = path.relative_to(ROOT).as_posix()
+        except ValueError:
+            relative = "engine/" + path.name
+        hashes[relative] = digest(path)
+    return hashes
 
 
 def docker(*arguments, timeout=60, check=True):
@@ -58,7 +94,7 @@ def runner_fingerprint():
     if sys.version_info[:2] != (3, 11):
         raise RuntimeError("Use the locked Python 3.11 runner environment")
     versions = {}
-    for line in (ROOT / "requirements-runner.lock").read_text(encoding="utf-8").splitlines():
+    for line in (ENGINE_ROOT / "requirements-runner.lock").read_text(encoding="utf-8").splitlines():
         if not line or line[0].isspace() or line.startswith("#"):
             continue
         requirement = Requirement(line.rstrip("\\ "))
@@ -136,6 +172,8 @@ def validate_profile(profile, scored, allow_cloud):
 
 def collect_submission(exported, destination):
     destination.mkdir()
+    if WORKFLOW.get("preserve_baseline_files"):
+        shutil.copytree(ROOT / "starter", destination, dirs_exist_ok=True, ignore=shutil.ignore_patterns("__pycache__", ".pytest_cache"))
     violations = []
     for path in exported.rglob("*"):
         relative = path.relative_to(exported).as_posix()
@@ -192,9 +230,12 @@ def has_test_assertion(tree):
 
 
 def verify(submission, output, image, policy):
+    contract_tests = WORKFLOW.get("contract_tests", ["test_contract.py", "test_native.py"])
+    generated_test = WORKFLOW.get("generated_test_path", "tests/test_generated.py")
+    generated_file = submission / generated_test
     regression_issue = None
     try:
-        tree = ast.parse((submission / "tests/test_generated.py").read_text(encoding="utf-8"))
+        tree = ast.parse(generated_file.read_text(encoding="utf-8"))
         if not has_test_assertion(tree):
             regression_issue = "missing_regression_assertions"
     except FileNotFoundError:
@@ -206,24 +247,47 @@ def verify(submission, output, image, policy):
     phase_errors = {}
     cleanup_errors = []
     failed_tests = []
-    for phase in ("contract", "generated"):
+    phases = {
+        "contract": ["/grader/" + path for path in contract_tests],
+        "generated": ["/task/" + generated_test],
+    }
+    if WORKFLOW.get("require_generated_test_to_fail_on_baseline"):
+        phases["negative_control"] = ["/task/" + generated_test]
+        if regression_issue != "missing_test_file":
+            baseline = output / "negative-control"
+            shutil.copytree(ROOT / "starter", baseline, ignore=shutil.ignore_patterns("__pycache__", ".pytest_cache"))
+            shutil.copyfile(generated_file, baseline / generated_test)
+    for phase, tests in phases.items():
         if phase == "generated" and regression_issue == "missing_test_file":
             results[phase] = False
             test_results[phase] = {"total": 0, "passed": 0, "failed": 0, "errors": 1, "skipped": 0, "cases": []}
             phase_errors[phase] = "MissingGeneratedTestFile"
             continue
+        if phase == "negative_control" and regression_issue == "missing_test_file":
+            results[phase] = False
+            test_results[phase] = {"total": 0, "passed": 0, "failed": 0, "errors": 1, "skipped": 0, "cases": []}
+            phase_errors[phase] = "MissingGeneratedTestFile"
+            continue
         name = "migration-verifier-" + uuid.uuid4().hex[:12]
+        task_source = output / "negative-control" if phase == "negative_control" else submission
         try:
-            docker("run", "-d", "--name", name, "--network", "none", "--read-only", "--cap-drop", "ALL", "--security-opt", "no-new-privileges", "--pids-limit", "128", "--cpus", policy["container_cpus"], "--memory", policy["container_memory"], "--tmpfs", "/tmp:rw,nosuid,size=128m", "--mount", f"type=bind,src={submission.resolve()},dst=/task,readonly", "--mount", f"type=bind,src={ROOT / 'grader'},dst=/grader,readonly", image, "tail", "-f", "/dev/null")
-            tests = ["/grader/test_contract.py", "/grader/test_native.py"] if phase == "contract" else ["/task/tests/test_generated.py"]
-            completed = docker("exec", name, "python", "-W", "error::pydantic.PydanticDeprecatedSince20", "-m", "pytest", *tests, "-q", "-p", "no:cacheprovider", "--import-mode=importlib", "--noconftest", "--junitxml=/tmp/report.xml", timeout=policy["verifier_timeout_seconds"], check=False)
+            docker("run", "-d", "--name", name, "--network", "none", "--read-only", "--cap-drop", "ALL", "--security-opt", "no-new-privileges", "--pids-limit", "128", "--cpus", policy["container_cpus"], "--memory", policy["container_memory"], "--tmpfs", "/tmp:rw,nosuid,size=128m", "--mount", f"type=bind,src={task_source.resolve()},dst=/task,readonly", "--mount", f"type=bind,src={ROOT / 'grader'},dst=/grader,readonly", image, "tail", "-f", "/dev/null")
+            if phase == "contract":
+                tests = ["/grader/" + path for path in contract_tests]
+            warning_args = ["-W", "error::pydantic.PydanticDeprecatedSince20"] if WORKFLOW.get("pydantic_warnings_as_errors", ROOT == ENGINE_ROOT) else []
+            completed = docker("exec", name, "python", *warning_args, "-m", "pytest", *tests, "-q", "-p", "no:cacheprovider", "--import-mode=importlib", "--noconftest", "--junitxml=/tmp/report.xml", timeout=policy["verifier_timeout_seconds"], check=False)
             (output / f"{phase}.txt").write_text(completed.stdout + completed.stderr, encoding="utf-8")
             report = output / f"{phase}.xml"
             copied = docker("exec", name, "cat", "/tmp/report.xml", check=False)
             if copied.returncode == 0:
                 report.write_text(copied.stdout, encoding="utf-8")
                 test_results[phase] = junit_summary(report)
-            results[phase] = completed.returncode == 0 and copied.returncode == 0 and junit_passed(report)
+            passed = completed.returncode == 0 and copied.returncode == 0 and junit_passed(report)
+            if phase == "negative_control" and copied.returncode == 0:
+                summary = test_results[phase]
+                results[phase] = completed.returncode != 0 and summary["failed"] > 0 and summary["errors"] == 0 and summary["skipped"] == 0
+            else:
+                results[phase] = passed
             if copied.returncode == 0 and not results[phase]:
                 failed_tests.extend(case.get("name", "unknown") for case in ET.parse(report).getroot().iter("testcase") if any(case.find(tag) is not None for tag in ("failure", "error", "skipped")))
         except (subprocess.SubprocessError, ET.ParseError) as error:
@@ -416,6 +480,14 @@ def _run_attempt(profile, frozen, scored, mock=False):
     output.mkdir(parents=True)
     prepared = output / "prepared"
     shutil.copytree(ROOT / "starter", prepared, ignore=shutil.ignore_patterns("__pycache__", ".pytest_cache"))
+    if mock and profile.get("seed_reference"):
+        for relative in ALLOWED:
+            source = ROOT / "reference" / relative
+            if not source.is_file():
+                raise FileNotFoundError(f"Smoke reference file is missing: {relative}")
+            destination = prepared / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(source, destination)
     name = "migration-agent-" + uuid.uuid4().hex[:12]
     save(output / "profile.json", {key: value for key, value in profile.items() if key != "mock_commands"})
     save(output / "freeze.json", frozen)
@@ -485,10 +557,11 @@ def _run_attempt(profile, frozen, scored, mock=False):
         result["submission_violations"] = violations
         if last_review and last_review["accepted"]:
             verification = last_review
-            for filename in ("contract.txt", "contract.xml", "generated.txt", "generated.xml"):
-                source = last_checkpoint / filename
-                if source.exists():
-                    shutil.copyfile(source, output / filename)
+            for phase in verification.get("test_results", {}):
+                for extension in ("txt", "xml"):
+                    source = last_checkpoint / f"{phase}.{extension}"
+                    if source.exists():
+                        shutil.copyfile(source, output / source.name)
         else:
             verification_start = time.perf_counter()
             verification = verify(output / "submission", output, image, policy)
@@ -563,15 +636,18 @@ def report(directory):
     return rows
 
 
-def main():
+def main(package_root=None):
+    if package_root is not None:
+        configure_package(package_root)
+    default_freeze = ROOT / "artifacts" / WORKFLOW.get("default_freeze", "freeze-600s-v8.json")
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
     freeze = commands.add_parser("freeze")
-    freeze.add_argument("--image", default="migration-task:0.1")
-    freeze.add_argument("--output", type=Path, default=ROOT / "artifacts/freeze-600s-v8.json")
+    freeze.add_argument("--image", default=WORKFLOW.get("default_image", "migration-task:0.1"))
+    freeze.add_argument("--output", type=Path, default=default_freeze)
     for name in ("run", "smoke"):
         command = commands.add_parser(name)
-        command.add_argument("--freeze", type=Path, default=ROOT / "artifacts/freeze-600s-v8.json")
+        command.add_argument("--freeze", type=Path, default=default_freeze)
         if name == "smoke":
             command.add_argument("--deadline-probe", action="store_true", help="Write partial repairs then simulate an unresponsive model until the frozen deadline")
         if name == "run":
@@ -595,17 +671,13 @@ def main():
         validate_profile(profile, args.scored, args.allow_cloud)
         return run_attempt(profile, load(args.freeze), args.scored)
     else:
-        files = {relative: (ROOT / "reference" / relative).read_text(encoding="utf-8") for relative in ALLOWED}
         if args.deadline_probe:
             if load(ROOT / "policy.json")["deadline_seconds"] is None:
                 raise ValueError("Deadline probe requires a finite frozen policy")
-            files.pop("tests/test_generated.py")
-        encoded = base64.b64encode(json.dumps(files).encode()).decode()
-        script = "import base64,json,pathlib; files=json.loads(base64.b64decode('" + encoded + "')); [pathlib.Path(name).write_text(text) for name,text in files.items()]"
-        commands = ["cat TASK.md", "python -c " + shlex.quote(script)]
+        commands = ["cat TASK.md"]
         if not args.deadline_probe:
             commands += ["python -m pytest -q -p no:cacheprovider", "printf 'COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT\\nsmoke\\n'"]
-        profile = {"label": "offline-deadline-probe" if args.deadline_probe else "offline-harness-smoke", "provider": "mock", "model": "offline-mock", "mock_commands": commands, "mock_wait_after_commands": args.deadline_probe}
+        profile = {"label": "offline-deadline-probe" if args.deadline_probe else "offline-harness-smoke", "provider": "mock", "model": "offline-mock", "mock_commands": commands, "mock_wait_after_commands": args.deadline_probe, "seed_reference": not args.deadline_probe}
         return run_attempt(profile, load(args.freeze), False, mock=True)
     return 0
 

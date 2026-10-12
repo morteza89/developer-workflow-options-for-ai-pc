@@ -2,7 +2,7 @@
 
 Prepared for Morteza Heidari and Ajith, 5 October 2026.
 
-Timing policy revised 12 October 2026: one 600-second (10-minute) agent-work budget for every local/cloud configuration, followed by independent evaluation of saved files, including partial work. No shorter target range or secondary success cutoff applies. Implementation status and run commands are maintained in [dependency-migration/README.md](dependency-migration/README.md); the research/selection discussion below is background, not a current setup guide.
+Timing policy revised 12 October 2026: the original local/cloud comparison uses one 600-second (10-minute) agent-work budget per configuration, followed by independent evaluation of saved files, including partial work. Option 3 Security Repair is separately implemented with its proposal-specific 240-second budget; offline verifier qualification is complete, but no model run has been performed. Current setup commands are in [dependency-migration/README.md](dependency-migration/README.md) and [security-repair/README.md](security-repair/README.md); the research/selection discussion below is background, not a current setup guide.
 
 ## Read this first
 
