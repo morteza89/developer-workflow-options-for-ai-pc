@@ -2,7 +2,7 @@
 
 Prepared for Morteza Heidari and Ajith, 5 October 2026.
 
-Timing policy revised 7 October 2026: one 240-second (four-minute) agent-work budget for every local/cloud configuration, followed by independent evaluation of saved files, including partial work. No shorter target range or secondary success cutoff applies. Implementation status and run commands are maintained in [dependency-migration/README.md](dependency-migration/README.md); the research/selection discussion below is background, not a current setup guide.
+Timing policy revised 12 October 2026: one 600-second (10-minute) agent-work budget for every local/cloud configuration, followed by independent evaluation of saved files, including partial work. No shorter target range or secondary success cutoff applies. Implementation status and run commands are maintained in [dependency-migration/README.md](dependency-migration/README.md); the research/selection discussion below is background, not a current setup guide.
 
 ## Read this first
 
@@ -17,17 +17,19 @@ Priority when interpreting these files:
 3. The earlier audit, as supporting technical research.
 4. The original Claude suggestions, as historical background subject to the audit.
 
+For the current PTL comparison, the user has selected an OpenAI API model (`gpt-6.1-sol`) for the cloud slot because OpenAI API credit is available. This is a deliberate provider substitution from the original Claude matrix; keep OpenAI and Claude results labeled separately and do not pool them.
+
 The earlier audit's A/B/C/D options are not the same numbering as the latest proposal's Options 1–4. In particular, the latest proposal replaces BaxBench Recipes and the Flask issue with an expense feature and a Pydantic migration as the leading choices.
 
 ## Manager objective
 
-Create a useful, everyday developer workflow in which AI performs a substantial coding activity within a common 240-second work budget. Run the same frozen task through local inference on Intel Lunar Lake (LNL), Intel Panther Lake (PTL), and a fixed Claude API model. Evaluate the saved files after early submission or the deadline; compare full acceptance, partial test results, elapsed time and cloud API fees. Extend the unchanged workflow to AMD in a later phase; add NPU configurations only after qualification.
+Create a useful, everyday developer workflow in which AI performs a substantial coding activity within a common 600-second work budget. Run the same frozen task through local inference on Intel Lunar Lake (LNL), Intel Panther Lake (PTL), and a fixed Claude API model. Evaluate the saved files after early submission or the deadline; compare full acceptance, partial test results, elapsed time and cloud API fees. Extend the unchanged workflow to AMD in a later phase; add NPU configurations only after qualification.
 
 The workflow must be repeatable, reusable, resettable, and shareable. The language and editor are implementation choices; meaningful task completion and the local/cloud comparison are the priorities. The original notes mention NVL as a future platform; the clarified first-phase platforms are LNL and PTL.
 
 Historical motivation, summarized with the current timing policy:
 
-Develop reusable, resettable coding workflows to compare local models on PTL/LNL with cloud inference, then extend to AMD. Give every model 240 seconds for meaningful developer work and evaluate the resulting application/tests afterward. The original request sought four actionable workflow options for selection; dependency migration is now implemented first.
+Develop reusable, resettable coding workflows to compare local models on PTL/LNL with cloud inference, then extend to AMD. Give every model 600 seconds for meaningful developer work and evaluate the resulting application/tests afterward. The original request sought four actionable workflow options for selection; dependency migration is now implemented first.
 
 ## Requirements to preserve
 
@@ -41,7 +43,7 @@ Develop reusable, resettable coding workflows to compare local models on PTL/LNL
 - Apply the allowed submission to a clean verifier environment. Do not trust only the tests or reported success inside the editable agent workspace.
 - Qualify the grader: unfinished baseline fails; a reference solution passes; deliberately wrong solutions fail.
 - Report local execution as "$0 cloud model API fees" when all inference is local. Hardware, electricity, and engineering work are separate costs. Disable and check for cloud fallback.
-- Treat runtime support, local-model quality, NPU availability, memory fit and the ability to complete the task within 240 seconds as unverified until measured.
+- Treat runtime support, local-model quality, NPU availability, memory fit and the ability to complete the task within 600 seconds as unverified until measured.
 
 ## Four workflow choices
 
@@ -126,7 +128,7 @@ Harbor and Mini-SWE-Agent are proposed foundations. Confirm their current interf
 
 ## Timing, quality, and cost
 
-Record a monotonic agent interval from task handoff in a ready workspace to final submission or 240 seconds, whichever comes first. It includes model calls, file edits, visible tests and repairs. Pause the task and evaluate its saved files afterward, including incomplete work. Record stop overhead, independent final-verification time and cleanup separately; total command duration can exceed four minutes. No further model repairs occur after the cutoff.
+Record a monotonic agent interval from task handoff in a ready workspace to final submission or 600 seconds, whichever comes first. It includes model calls, file edits, visible tests and repairs. Pause the task and evaluate its saved files afterward, including incomplete work. Record stop overhead, independent final-verification time and cleanup separately; total command duration can exceed 10 minutes. No further model repairs occur after the cutoff.
 
 Log at least:
 
@@ -147,10 +149,10 @@ Cost per accepted task = total API charges for the attempt set / number of accep
 1. Choose a named local reference PC/model. LNL was proposed if both platforms are available; this is an experimental choice, not an observed ranking.
 2. Qualify model loading, memory fit, actual device use, and a short read/edit/test loop.
 3. Build a reference solution, incomplete starting state, and validated acceptance checks for each selected workflow.
-4. Pilot the meaningful scope using a warm resident model and the common 240-second work budget. Do not resize the task for each model or to fill the interval.
+4. Pilot the meaningful scope using a warm resident model and the common 600-second work budget. Do not resize the task for each model or to fill the interval.
 5. Freeze task, contract, dependencies, agent policy, context limits, and timeout. Rerun the same package everywhere.
-6. Run five pilot attempts per configuration under the same 240-second work budget. Report full acceptance and partial results without a shorter success target; this plan is not a statistical reliability claim.
-7. Use 240 seconds as the single scored work deadline. Evaluate the early-submission or deadline snapshot afterward, even without a submit marker. Keep incomplete work, failures and timeouts; do not infer an earlier completion time from later evaluation.
+6. Run five pilot attempts per configuration under the same 600-second work budget. Report full acceptance and partial results without a shorter success target; this plan is not a statistical reliability claim.
+7. Use 600 seconds as the single scored work deadline. Evaluate the early-submission or deadline snapshot afterward, even without a submit marker. Keep incomplete work, failures and timeouts; do not infer an earlier completion time from later evaluation.
 8. Inspect the request/tool breakdown. A proposed selection criterion is at least 60% of agent elapsed time in client-observed model requests; this is not pure accelerator compute.
 
 The latest proposed first matrix is two selected workflows × four configurations × five attempts = 40 measured attempts:

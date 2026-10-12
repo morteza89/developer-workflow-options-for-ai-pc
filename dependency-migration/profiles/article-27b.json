@@ -1,0 +1,12 @@
+{
+  "label": "ptl-morteza89-qwen3.8-27b-int4",
+  "provider": "local",
+  "base_url": "http://127.0.0.1:8000/v3",
+  "model": "qwen3.8-27b-ov",
+  "expected_returned_model": "qwen3.8-27b-ov",
+  "extra_body": {"chat_template_kwargs": {"enable_thinking": false}},
+  "qualified": false,
+  "host": {"sku": "REQUIRED", "ram_gb": null, "os": "REQUIRED", "driver": "REQUIRED", "bios": "REQUIRED", "power_mode": "REQUIRED"},
+  "inference": {"runtime": "OVMS 2026.4.0.869b2186; OpenVINO 2026.4.0-22959-99c81491cc3-releases/2026/4; OpenVINO GenAI 2026.4.0.0-3407-7ea2546852a", "runtime_sha256": "REQUIRED", "model_revision": "0b379da0a1b2aa7987693b253724f19ad82928f1", "export_sha256": "REQUIRED", "template_sha256": "REQUIRED", "device": "GPU", "context_limit": null, "reasoning_effort": "non-thinking via chat_template_kwargs", "cache_policy": "Dynamic KV cache; prefix caching enabled; max_num_seqs default; disk compilation cache enabled; record warm/cold condition", "cold_start_seconds": null, "peak_memory_gb": null, "offload_evidence": "REQUIRED", "no_cloud_fallback_evidence": "REQUIRED"},
+  "rate_card": null
+}

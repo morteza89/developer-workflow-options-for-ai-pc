@@ -73,7 +73,7 @@ def test_unqualified_profile_cannot_be_scored():
 def test_scored_profile_requires_measured_context_limit():
     profile = bench.load(bench.ROOT / "profiles/local-8b.json")
     profile["qualified"] = True
-    profile["host"]["power_mode"] = "Best performance"
+    profile["host"].update(sku="test host", os="test OS", driver="test driver", bios="test BIOS", power_mode="Best performance")
     profile["inference"].update(runtime="OVMS", runtime_sha256="sha", model_revision="rev", export_sha256="sha", template_sha256="sha", cache_policy="warm", cold_start_seconds=1, peak_memory_gb=10, offload_evidence="measured", no_cloud_fallback_evidence="loopback")
     with pytest.raises(ValueError, match="context limit"):
         bench.validate_profile(profile, True, False)
@@ -88,6 +88,91 @@ def test_cloud_requires_opt_in_and_environment_secret(monkeypatch):
         bench.validate_profile(profile, False, True)
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-only-not-a-credential")
     bench.validate_profile(profile, False, True)
+
+
+def test_openai_requires_opt_in_and_environment_secret(monkeypatch):
+    profile = bench.load(bench.ROOT / "profiles/openai.json")
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    with pytest.raises(ValueError, match="allow-cloud"):
+        bench.validate_profile(profile, False, False)
+    with pytest.raises(ValueError, match="environment"):
+        bench.validate_profile(profile, False, True)
+    monkeypatch.setenv("OPENAI_API_KEY", "test-only-not-a-credential")
+    bench.validate_profile(profile, False, True)
+
+
+def test_openai_responses_request_uses_fixed_model_and_shared_budget():
+    from types import SimpleNamespace
+    from worker import openai_finish_reason, openai_response_input, openai_response_options
+
+    profile = bench.load(bench.ROOT / "profiles/openai.json")
+    policy = bench.load(bench.ROOT / "policy.json")
+    messages = [
+        {"role": "system", "content": "instructions"},
+        {"role": "user", "content": "task"},
+        {"role": "assistant", "content": "answer", "tool_calls": None, "function_call": None},
+    ]
+    options = openai_response_options(profile, policy, messages)
+    assert options["model"] == "gpt-6.1-sol"
+    assert options["instructions"] == "instructions"
+    assert options["input"] == [{"role": "user", "content": "task"}, {"role": "assistant", "content": "answer"}]
+    assert openai_response_input(messages) == options["input"]
+    assert options["max_output_tokens"] == 2048
+    assert options["reasoning"] == {"effort": "medium"}
+    assert options["timeout"] == 600
+    assert openai_finish_reason(SimpleNamespace(status="completed")) == "stop"
+    assert openai_finish_reason(SimpleNamespace(status="incomplete", incomplete_details=SimpleNamespace(reason="max_output_tokens"))) == "length"
+
+
+def test_openai_multiple_action_blocks_execute_only_first():
+    from worker import normalize_openai_action
+
+    response = """```mswea_bash_command
+printf 'first'
+```
+```mswea_bash_command
+printf 'second'
+```"""
+    normalized, count = normalize_openai_action(response)
+    assert count == 2
+    assert normalized == "```mswea_bash_command\nprintf 'first'\n```"
+    assert "second" not in normalized
+
+
+def test_openai_action_normalization_leaves_single_and_nonaction_text_unchanged():
+    from worker import normalize_openai_action
+
+    single = "```mswea_bash_command\nprintf 'one'\n```"
+    assert normalize_openai_action(single) == (single, 1)
+    assert normalize_openai_action("no action") == ("no action", 0)
+
+
+def test_provider_error_diagnostics_keep_status_and_redact_key():
+    from types import SimpleNamespace
+    from worker import request_error_details
+
+    error = SimpleNamespace(status_code=400, code="bad_request", param="input", request_id="req_test", message="invalid key sk-proj-123456789012345678901234")
+    details = request_error_details(error)
+    assert details["status_code"] == 400
+    assert details["code"] == "bad_request"
+    assert details["param"] == "input"
+    assert "sk-proj-123456789012345678901234" not in details["message"]
+
+
+def test_openai_fee_accounts_for_cached_reads_writes_and_long_context():
+    profile = bench.load(bench.ROOT / "profiles/openai.json")
+    card = profile["rate_card"]
+    events = [
+        {"kind": "request_start"},
+        {"kind": "request_end", "usage": {"input_tokens": 1000, "output_tokens": 20, "input_tokens_details": {"cached_tokens": 100, "cache_write_tokens": 400}}},
+    ]
+    assert bench.api_fee(profile, events) == pytest.approx(0.00221)
+    long_events = [
+        {"kind": "request_start"},
+        {"kind": "request_end", "usage": {"input_tokens": card["long_context_threshold_tokens"] + 1, "output_tokens": 20, "input_tokens_details": {"cached_tokens": 0, "cache_write_tokens": 0}}},
+    ]
+    expected = (card["long_context_threshold_tokens"] + 1) * 4 / 1_000_000 + 20 * 15 / 1_000_000
+    assert bench.api_fee(profile, long_events) == pytest.approx(expected)
 
 
 def test_submission_filter_keeps_only_permitted_files(tmp_path):
@@ -290,13 +375,13 @@ def test_supervisor_stops_worker_before_verification_and_retains_cleanup_error(t
     real_root = bench.ROOT
     shutil.copytree(real_root / "starter", tmp_path / "starter")
     policy = bench.load(real_root / "policy.json")
-    policy["deadline_seconds"] = None if unlimited else 240
+    policy["deadline_seconds"] = None if unlimited else 600
     bench.save(tmp_path / "policy.json", policy)
     monkeypatch.setattr(bench, "ROOT", tmp_path)
     monkeypatch.setattr(bench, "image_id", lambda image: "sha256:test")
     monkeypatch.setattr(bench, "runner_fingerprint", lambda: {"python": "test"})
     monkeypatch.setattr(bench, "package_hashes", lambda: {})
-    monkeypatch.setattr(bench.time, "perf_counter", lambda: 805 if unlimited else (345 if deadline else 150))
+    monkeypatch.setattr(bench.time, "perf_counter", lambda: 805 if unlimited else (705 if deadline else 150))
     actions = []
 
     class Pipe:
@@ -375,33 +460,33 @@ def test_supervisor_stops_worker_before_verification_and_retains_cleanup_error(t
         assert result["accepted"]
 
 
-def test_four_minute_policy_and_after_work_evaluation():
-    from worker import request_options
+def test_ten_minute_policy_and_after_work_evaluation():
+    from worker import render_system_template, request_options
 
     policy = bench.load(bench.ROOT / "policy.json")
-    assert policy["deadline_seconds"] == 240
+    assert policy["deadline_seconds"] == 600
     assert policy["step_limit"] == 0
     assert policy["max_conversation_characters"] is None
     assert "reference_range_seconds" not in policy
     assert "success_cutoff_seconds" not in policy
-    assert "240 seconds total" in policy["system_template"]
-    assert "stops at 240 seconds" in policy["system_template"]
+    assert "600 seconds total" in render_system_template(policy)
+    assert "stops at 600 seconds" in render_system_template(policy)
     assert "truncated at the output limit" in policy["format_error_template"]
     task = (bench.ROOT / "starter/TASK.md").read_text(encoding="utf-8")
-    assert "240 seconds" in task
+    assert "600 seconds" in task
     assert "Their results are not returned for further repairs" in task
-    for filename in ("local-8b.json", "local-27b.json", "claude.json"):
-        assert request_options(bench.load(bench.ROOT / "profiles" / filename), policy)["timeout"] == 240
+    for filename in ("local-8b.json", "article-27b.json", "claude.json", "openai.json"):
+        assert request_options(bench.load(bench.ROOT / "profiles" / filename), policy)["timeout"] == 600
 
 
 def test_deadline_does_not_accept_buffered_messages_after_cutoff(monkeypatch):
-    monkeypatch.setattr(bench.time, "perf_counter", lambda: 341)
+    monkeypatch.setattr(bench.time, "perf_counter", lambda: 701)
 
     class Connection:
         def poll(self, timeout):
             pytest.fail("Do not receive another action after the deadline")
 
-    assert bench.wait_for_worker(Connection(), 100, 240, lambda: pytest.fail("No in-loop verification")) == {"kind": "deadline", "at": 340}
+    assert bench.wait_for_worker(Connection(), 100, 600, lambda: pytest.fail("No in-loop verification")) == {"kind": "deadline", "at": 700}
 
 
 def test_unlimited_supervisor_returns_rejection_then_acceptance_feedback():
@@ -465,12 +550,22 @@ def test_native_usage_totals_keep_provider_fields_and_unknown_calls():
     assert not bench.usage_metrics(events + [{"kind": "request_start"}])["usage_complete"]
 
 
+def test_usage_report_counts_normalized_openai_action_blocks():
+    events = [
+        {"kind": "request_start"},
+        {"kind": "request_end", "seconds": 1, "usage": {"input_tokens": 100, "output_tokens": 10}, "normalized_action_blocks": 3},
+    ]
+    metrics = bench.usage_metrics(events)
+    assert metrics["normalized_action_response_count"] == 1
+    assert metrics["discarded_action_block_count"] == 2
+
+
 def test_completion_report_keeps_slow_success_and_profiles_separate(tmp_path):
     for index, profile in enumerate(("local8", "local27", "cloud")):
         output = tmp_path / f"attempt-{index}"
         output.mkdir()
         exit_status = ("Submitted", "deadline", "error")[index]
-        record = {"attempt_id": output.name, "task_hash": "completion-task", "profile_hash": profile, "label": profile, "scored": False, "mock": False, "accepted": True, "agent_seconds": 900, "completion_seconds": 902, "api_fee_usd": 0 if index < 2 else 0.5, "category": "accepted", "exit_status": exit_status, "submission_seconds": (12, 240, 200)[index], "native_usage_totals": {"output_tokens": 200}, "usage_complete": True, "verification": {"checks": {"contract": True, "generated": True}}}
+        record = {"attempt_id": output.name, "task_hash": "completion-task", "profile_hash": profile, "label": profile, "scored": False, "mock": False, "accepted": True, "agent_seconds": 900, "completion_seconds": 902, "api_fee_usd": 0 if index < 2 else 0.5, "category": "accepted", "exit_status": exit_status, "submission_seconds": (12, 600, 200)[index], "native_usage_totals": {"output_tokens": 200}, "usage_complete": True, "verification": {"checks": {"contract": True, "generated": True}}}
         if index == 2:
             record["worker_outcome"] = {"error_type": "RuntimeError"}
         bench.save(output / "result.json", record)
@@ -487,11 +582,11 @@ def test_report_retains_partial_deadline_evaluation(tmp_path):
     output = tmp_path / "attempt-partial"
     output.mkdir()
     summary = {"contract": {"total": 2, "passed": 1, "failed": 1, "errors": 0, "skipped": 0, "cases": [{"name": "health", "status": "passed"}, {"name": "receipt", "status": "failed"}]}}
-    bench.save(output / "result.json", {"attempt_id": output.name, "task_hash": "four-minute", "profile_hash": "local27", "label": "local27", "scored": False, "mock": False, "accepted": False, "accepted_within_budget": False, "deadline_seconds": 240, "api_fee_usd": 0, "category": "deadline", "exit_status": "deadline", "verification": {"test_results": summary, "regression_issue": "missing_regression_assertions"}})
+    bench.save(output / "result.json", {"attempt_id": output.name, "task_hash": "ten-minute", "profile_hash": "local27", "label": "local27", "scored": False, "mock": False, "accepted": False, "accepted_within_budget": False, "deadline_seconds": 600, "api_fee_usd": 0, "category": "deadline", "exit_status": "deadline", "verification": {"test_results": summary, "regression_issue": "missing_regression_assertions"}})
     row = bench.report(tmp_path)[0]
     assert row["accepted"] == 0
     assert row["evaluation_results"][0]["stop_reason"] == "deadline"
     assert row["evaluation_results"][0]["test_results"] == summary
     assert row["evaluation_results"][0]["regression_issue"] == "missing_regression_assertions"
-    assert row["deadline_seconds"] == 240
+    assert row["deadline_seconds"] == 600
     assert row["accepted_within_budget"] == 0

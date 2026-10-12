@@ -3,40 +3,40 @@
 **Another laptop:** start with [Replicate on Another Windows Laptop](MODELS.md#replicate-on-another-windows-laptop) for the exact working 27B runtime/model/launcher. Return here for benchmark setup. Do not use the old restart handoff as a fresh-install guide.
 
 
-**Current policy:** [policy.json](policy.json), [starter/TASK.md](starter/TASK.md), tests and the proposal use one **240-second** work budget. Use `artifacts/freeze-240s-v3.json` for the audited package. Earlier freezes and attempts retain their original inputs and must not be pooled with this version.
+**Current policy:** [policy.json](policy.json), [starter/TASK.md](starter/TASK.md), tests and the proposal use one **600-second (10-minute)** work budget. Create and use `artifacts/freeze-600s-v8.json` for the current OpenAI adapter revision. Existing freezes and attempts retain their original inputs and must not be overwritten.
 
 ## What You Can Test Now
 
 This is an implemented, resettable benchmark package, **not a hardware-qualified benchmark yet**. The original v1 service and native v2 reference pass 35 identical behavior cases. The v2 reference also passes four native-API and route-boundary checks. Fourteen deliberately incorrect repairs are rejected. The official codemod runs but does not finish this task. Runner unit tests pass. See [VALIDATION.md](VALIDATION.md) for evidence and limitations.
 
-The model gets **240 seconds (four minutes) of work**, including inference, editing, visible tests and repairs. At the deadline, earlier submission or worker exit, the parent pauses the task, stops the worker and evaluates the saved files. Evaluation runs outside the work budget and includes partial progress. Protected feedback is not returned for another repair round. There is no separate shorter success cutoff or target range; all three models receive the same budget.
+The model gets **600 seconds (10 minutes) of work**, including inference, editing, visible tests and repairs. At the deadline, earlier submission or worker exit, the parent pauses the task, stops the worker and evaluates the saved files. Evaluation runs outside the work budget and includes partial progress. Protected feedback is not returned for another repair round. There is no separate shorter success cutoff or target range; all three models receive the same budget.
 
-The 8B INT8 and the article's distinct Morteza89 27B INT4 endpoints both serve requests; the 27B also passed native tool-call parsing. Earlier timed migration pilots did not pass and remain historical evidence, not results for this new policy. Neither local model nor the cloud configuration is yet task-qualified. See [MODELS.md](MODELS.md) for the current 27B launcher.
+The 8B INT8 and the article's distinct Morteza89 27B INT4 endpoints both serve requests; the 27B also passed native tool-call parsing. Under the 600-second policy, the PTL 27B pilot was accepted; the 8B pilot submitted unchanged starter code and was rejected. The first OpenAI GPT-6.1 Sol attempt exposed two adapter issues, now fixed. Its v8 pilot was accepted in 42.66 seconds with 39/39 contract/native checks, 27/27 generated tests, and an estimated $0.03283 API fee. One response had four command blocks; only the first was run, as required by the agent protocol. These are initial pilots, not qualification or a statistical comparison. Check the provider usage dashboard for actual billing. See [MODELS.md](MODELS.md) for setup.
 
 ### Current Host Checkpoint
 
-The four-minute policy uses `artifacts/freeze-240s-v3.json`, also the CLI default. Earlier attempts and freezes, including the unbounded run, remain untouched and cannot be pooled with this package. The application contract, strengthened native-v2 checks and four-file allowlist are unchanged. Missing or malformed generated tests do not prevent separate application evaluation, but still prevent full acceptance.
+The 10-minute policy uses `artifacts/freeze-600s-v8.json`, also the CLI default. Earlier attempts and freezes, including the unbounded run, remain untouched and cannot be overwritten. The application contract, strengthened native-v2 checks and four-file allowlist are unchanged. Missing or malformed generated tests do not prevent separate application evaluation, but still prevent full acceptance.
 
 The next optional local test is unscored, from this folder in clean PowerShell, with OVMS still running:
 
 ```powershell
-.\.venv-runner\Scripts\python.exe bench.py run --profile profiles\ptl-morteza89-27b.private.json --freeze artifacts\freeze-240s-v3.json
+.\.venv-runner\Scripts\python.exe bench.py run --profile profiles\ptl-morteza89-27b.private.json --freeze artifacts\freeze-600s-v8.json
 ```
 
-Keep `qualified: false` until pilot review and required host/profile measurements are complete. Do not run scored loops yet. Normally let the deadline finish the run so the snapshot gets evaluated. Ctrl+C is emergency cancellation with available artifacts/usage retained and cleanup attempted; it does not guarantee a final snapshot. Shell actions retain a 30-second timeout and verifier execution phases a 60-second timeout. Preparation, snapshot overhead, evaluation and cleanup mean the complete command can take longer than four minutes.
+Keep `qualified: false` until pilot review and required host/profile measurements are complete. Do not run scored loops yet. Normally let the deadline finish the run so the snapshot gets evaluated. Ctrl+C is emergency cancellation with available artifacts/usage retained and cleanup attempted; it does not guarantee a final snapshot. Shell actions retain a 30-second timeout and verifier execution phases a 60-second timeout. Preparation, snapshot overhead, evaluation and cleanup mean the complete command can take longer than 10 minutes.
 
 ## Workflow
 
 ```mermaid
 flowchart LR
-    .\venv-runner\Scripts\python.exe bench.py freeze --output artifacts\freeze-240s-v3.json
-    .\venv-runner\Scripts\python.exe bench.py smoke --freeze artifacts\freeze-240s-v3.json
+    .\.venv-runner\Scripts\python.exe bench.py freeze --output artifacts\freeze-600s-v8.json
+    .\.venv-runner\Scripts\python.exe bench.py smoke --freeze artifacts\freeze-600s-v8.json
     C --> D[Same Mini-SWE-Agent loop]
     L[Local OVMS] --> D
-    R[Fixed Claude API] --> D
+    R[Fixed OpenAI API for this comparison] --> D
     D --> E[Read - edit - test - repair]
     E --> D
-    D --> F[Submit early or reach 240 seconds]
+    D --> F[Submit early or reach 600 seconds]
     F --> G[Pause task - stop agent - snapshot files]
     G --> H[Check allowed files]
     H --> I[Fresh protected contract verifier]
@@ -88,26 +88,26 @@ On another OS, use `.venv-runner/bin/python` instead of the Windows executable p
 ## 3. Freeze and Exercise the Complete Offline Harness
 
 ```powershell
-.\.venv-runner\Scripts\python.exe bench.py freeze --image migration-task:0.1 --output artifacts\freeze-240s-v3.json
-.\.venv-runner\Scripts\python.exe bench.py smoke --freeze artifacts\freeze-240s-v3.json
+.\.venv-runner\Scripts\python.exe bench.py freeze --image migration-task:0.1 --output artifacts\freeze-600s-v8.json
+.\.venv-runner\Scripts\python.exe bench.py smoke --freeze artifacts\freeze-600s-v8.json
 ```
 
 Skip freeze creation if that exact freeze already exists; never overwrite it. Expected smoke: `accepted: true`, `mock: true`, `scored: false`, early submission, 39 contract/native checks and two generated tests passing, zero model calls/fees. References are supplied only to this labeled mock, never to the real model. Smoke is not model-quality or speed evidence.
 
-To test the actual four-minute cutoff without any model, use `bench.py smoke --freeze artifacts\freeze-240s-v3.json --deadline-probe` with the same runner executable. This writes reference application repairs but no regression tests, then blocks the mock worker. Expected: deadline at 240 seconds, snapshot-stop overhead reported separately, 39 contract/native passes, zero generated tests, `accepted: false`, exit code 1 and clean cleanup. That rejection is the intended probe result, not a broken harness.
+To test the actual 10-minute cutoff without any model, use `bench.py smoke --freeze artifacts\freeze-600s-v8.json --deadline-probe` with the same runner executable. This writes reference application repairs but no regression tests, then blocks the mock worker. Expected: deadline at 600 seconds, snapshot-stop overhead reported separately, 39 contract/native passes, zero generated tests, `accepted: false`, exit code 1 and clean cleanup. That rejection is the intended probe result, not a broken harness.
 
-Freeze captures source, published contract, notes, reference, grader, locks, policy, runner code, and the concrete image ID. It does not overwrite an existing freeze. After a justified pre-comparison change, create a new one:
+Freeze captures source, published contract, notes, reference, grader, locks, policy, runner code, and the concrete image ID. It does not overwrite an existing freeze. After a justified pre-comparison change to this 600-second package, create a fresh v9 freeze:
 
 ```powershell
-.\.venv-runner\Scripts\python.exe bench.py freeze --output artifacts\freeze-240s-v4.json
-.\.venv-runner\Scripts\python.exe bench.py smoke --freeze artifacts\freeze-240s-v4.json
+.\.venv-runner\Scripts\python.exe bench.py freeze --output artifacts\freeze-600s-v8.json
+.\.venv-runner\Scripts\python.exe bench.py smoke --freeze artifacts\freeze-600s-v8.json
 ```
 
 Supply that same `--freeze` path to later runs. Freeze creation is not proof of calibration. Re-run qualification after changing the fixture or checks.
 
 ## 4. Qualify a Local Model
 
-Follow [MODELS.md](MODELS.md) for model preparation, OVMS commands, memory checks, profile completion, and cloud setup. The working 27B endpoint on this host is the article export **Morteza89/qwen3.8-27b-int4-ov**, using `profiles/ptl-morteza89-27b.private.json`. The separate OpenVINO 8B INT8 candidate has its own profile. `profiles/local-27b.json` refers to a different OpenVINO export whose fixed-cache startup failed here; do not use it as the working 27B model. Confirm that each OVMS export honors the non-thinking request setting.
+Follow [MODELS.md](MODELS.md) for model preparation, OVMS commands, memory checks, profile completion, and cloud setup. The working 27B endpoint on this host is the article export **Morteza89/qwen3.8-27b-int4-ov**, using `profiles/ptl-morteza89-27b.private.json`, based on the tracked `profiles/article-27b.json` template. Do not substitute the removed OpenVINO 27B export profile. Confirm that each OVMS export honors the non-thinking request setting.
 
 Local profiles contain observed machine identity but deliberately retain `qualified: false` and missing measurement fields. Those are not promises that the model will fit or succeed. Duplicate profiles before editing so results retain a clear configuration identity.
 
@@ -118,11 +118,23 @@ if (-not (Test-Path profiles\ptl-8b.private.json)) { Copy-Item profiles\local-8b
 
 This is an unscored pilot; it still uses the frozen task and retains failures. Inspect the full trajectory, tests, model identity, native usage, and submitted source. Correct serving or routing problems before calibrating task scope. No model download/startup should occur inside this command. Keep the server resident and warmed, with the documented cache condition.
 
-For the running article export use [profiles/ptl-morteza89-27b.private.json](profiles/ptl-morteza89-27b.private.json). [profiles/local-27b.json](profiles/local-27b.json) identifies the different OpenVINO export, not the article export. Do not reduce the frozen task for either model.
+For the running article export use [profiles/ptl-morteza89-27b.private.json](profiles/ptl-morteza89-27b.private.json), copied from [profiles/article-27b.json](profiles/article-27b.json). Do not reduce the frozen task for either local model.
 
 ## 5. Compare Two Local Models and Cloud
 
-Use three configurations: local Qwen3-8B INT8, local Morteza89 Qwen3.8-27B INT4 and one pinned Claude API model. All receive the same frozen task, 240-second work budget, agent policy, permissions and post-work checks. Run only one local server/model at a time. Record device, sampling, reasoning, cache, runtime and export identity in each profile; disclose differences.
+For the current PTL comparison, use local Qwen3-8B INT8, local Morteza89 Qwen3.8-27B INT4, and one pinned OpenAI API model (`gpt-6.1-sol`). All receive the same frozen task, 600-second work budget, agent permissions and post-work checks. The OpenAI run uses the Responses API with medium reasoning effort; temperature is not sent. The adapter converts the agent transcript to Responses-compatible `role`/`content` messages, strips unsupported Chat Completions fields such as `tool_calls`, and if the model returns multiple action blocks it logs the raw response and sends only the first command to the agent. Record these provider-specific compatibility behaviors in comparisons. Run only one local server at a time. Claude remains a separately supported provider and its results must not be grouped with OpenAI.
+
+### Initial PTL Results (v8)
+
+| Configuration | Result | Handoff / through verification | Contract/native | Generated tests | Calls; tokens | Estimated API fee |
+|---|---|---:|---:|---:|---|---:|
+| Qwen3.8 27B INT4 | Accepted | 432.99 s / 436.13 s | 39/39 | 12/12 | 15; 69,949 input, 3,067 output | $0.00 |
+| Qwen3 8B INT8 | Rejected; submitted unchanged starter | 8.76 s / 11.40 s | Collection error (2 errors; no contract checks ran) | 0 | 4; 4,792 input, 80 output | $0.00 |
+| OpenAI GPT-6.1 Sol | Accepted | 42.66 s / 45.77 s | 39/39 | 27/27 | 4; 12,499 input, 2,211 output | $0.032829 estimated |
+
+Attempt records: [27B](artifacts/attempt-8b0e51f33b8a4a3186be8f05810ee109/result.json), [8B](artifacts/attempt-20eb2a59ba3644b9b72e3037baa6d5ba/result.json), [OpenAI](artifacts/attempt-59734f17f8ec44399f369e8401fc0064/result.json). All three use task hash `58678ca6f07db6309a3d12f53a6c5743f82d4e5ae9df6e17d1eb41a3169f3762` and image `sha256:74283564a52c5969dec0355e2d0fa1f297110fd8be55f0b6d497650a627315a5`.
+
+These are single unscored pilots, not qualification or statistical evidence. Output rates are not directly comparable across tokenizers. The OpenAI adapter discarded three extra action blocks from one response and ran only the first; disclose this provider-specific normalization. The saved 8B v8 attempt captured the profile before its host metadata was corrected; the current private profile is now corrected, but that immutable attempt record still has the old profile snapshot.
 
 Compare full acceptance, named partial results, and early completion time. Do not resize the task for a model or discard partial/failed attempts. Following the proposal, run five supervised unscored pilot attempts per configuration and review their saved files/results and profile evidence. If the configurations qualify, run the same predeclared number of scored attempts for all three; the initial plan is five additional scored attempts each. Every attempt starts from a fresh task. Submission ends work early even if later protected evaluation fails; there is no protected repair loop under this policy.
 
@@ -135,21 +147,23 @@ Run each attempt individually from the saved interleaving schedule. Switch the l
 .\.venv-runner\Scripts\python.exe bench.py report
 ```
 
-Run one at a time: an exclusive attempt lock rejects overlap. The initial plan is five attempts each for **local 8B, local 27B, and pinned Claude**: 15 runs on this host. Randomize/interleave configuration order in a saved schedule while loading only one local model at a time. Other hosts, NPU and AMD are later, separate qualifications. Do not omit failed attempts.
+Run one at a time: an exclusive attempt lock rejects overlap. The initial PTL plan is five attempts each for **local 8B, local 27B, and pinned OpenAI GPT-6.1 Sol**: 15 runs on this host. Randomize/interleave configuration order in a saved schedule while loading only one local model at a time. Other hosts, NPU and AMD are later, separate qualifications. Do not omit failed attempts.
 
-Cloud invocation is the same loop and command, with an explicit spending opt-in:
+OpenAI API invocation is an unscored pilot first, with an explicit cloud opt-in:
 
-The parent enforces the same four-minute work limit for cloud, but this is not a dollar spending cap. Review provider spending controls; in-flight work may remain billable after client termination. See [MODELS.md](MODELS.md).
+The parent enforces the same 10-minute work limit for cloud, but this is not a dollar spending cap. Review provider spending controls; in-flight work may remain billable after client termination. See [MODELS.md](MODELS.md).
 
 ```powershell
-.\.venv-runner\Scripts\python.exe bench.py run --profile profiles\claude.private.json --scored --allow-cloud
+.\.venv-runner\Scripts\python.exe bench.py run --profile profiles\ptl-openai.private.json --freeze artifacts\freeze-600s-v8.json --allow-cloud
 ```
+
+See [MODELS.md](MODELS.md#openai-api-through-the-same-agent) for Console/API key setup, profile preparation, model identity and rate-card details. VS Code Copilot Chat is not the API provider used in this measurement.
 
 ## Timing and Cost Definitions
 
 | Field | Meaning |
 |---|---|
-| `submission_seconds` | Handoff to submission or the scheduled deadline (240 seconds) |
+| `submission_seconds` | Handoff to submission or the scheduled deadline (600 seconds) |
 | `agent_seconds` | Handoff through confirmed task pause; excludes final evaluation |
 | `cutoff_overrun_seconds` | Actual pause time beyond the deadline due to scheduling/Docker stop overhead |
 | `accepted_within_budget` | Captured saved output passes evaluation within the work budget; stop reason is reported separately. Historical records without this metric remain unknown, not reclassified |
@@ -181,7 +195,7 @@ If interrupted by a machine crash, preserve the attempt folder. Check `artifacts
 
 - Mini-SWE-Agent 2.4.6 is reused, with its text-action parser and standard read/edit/test loop. Official OpenAI and Anthropic SDK adapters preserve native usage with retries disabled. No second custom coding-agent loop is invented.
 - Harbor was a proposal, not a fixed requirement. This first Windows package uses a focused supervisor instead. Docker and endpoint integration must pass smoke/pilots before calling this choice qualified. It is not advertised as a Harbor task.
-- The parent enforces 240 seconds even during an unresponsive model request. There is no additional step or conversation-character cap; backend context limits still apply, without silent compaction. The 2048-token response limit remains, and the shared prompt requests small complete commands. A stalled or repetitive model can consume its four minutes but cannot keep the coding loop running indefinitely. Docker/OS failures are infrastructure exceptions, not hard real-time guarantees.
+- The parent enforces 600 seconds even during an unresponsive model request. There is no additional step or conversation-character cap; backend context limits still apply, without silent compaction. The 2048-token response limit remains, and the shared prompt requests small complete commands. A stalled or repetitive model can consume its 10 minutes but cannot keep the coding loop running indefinitely. Docker/OS failures are infrastructure exceptions, not hard real-time guarantees.
 - The fixed temperature 0 is an experimental choice, not the Qwen authors' quality-optimal sampling recommendation. Qualify it; change common settings only before freezing. No seed is sent because support is not assumed. Repeated runs are still necessary.
 - This is cooperative coding evaluation. Read-only files and separate processes reduce accidental leakage and tampering; executing submitted Python with pytest is not an adversarial-proof grader. Review accepted diffs for hardcoded routes, grader-targeting, validation bypass, or process tampering before publishing acceptance. Do not expose this host/container setup to malicious code.
 - Qualification contracts are public; only grader implementation and references are hidden from measured agents. Functionally equivalent native solutions are intended to pass. Security repair and regression-test workflows remain unimplemented pending your approval.
@@ -189,4 +203,4 @@ If interrupted by a machine crash, preserve the attempt folder. Check `artifacts
 - The generic runner cannot inspect OVMS request drain or per-attempt prefix-cache hits. Confirm previous local requests have ended, record server restarts/cache state/run order, and do not treat different warm-cache histories as equivalent.
 - A deadline can snapshot a file during a write. The verifier evaluates the bytes captured; an incomplete file can cause a collection error.
 
-**Current feedback checkpoint:** use the current pilot command above with the article 27B server ready and no previous request still running. Review partial/full test results after four minutes plus evaluation, then repeat the same policy for 8B/cloud. Do not move to security repair until this workflow is accepted. Fresh hosts first pass setup and smoke.
+**Current feedback checkpoint:** use the current pilot command above with the article 27B server ready and no previous request still running. Review partial/full test results after 10 minutes plus evaluation, then repeat the same policy for 8B/cloud. Do not move to security repair until this workflow is accepted. Fresh hosts first pass setup and smoke.

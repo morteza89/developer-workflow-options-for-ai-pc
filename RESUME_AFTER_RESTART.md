@@ -1,6 +1,6 @@
 # Resume After Windows Restart
 
-Historical restart checkpoint only. Current setup/run instructions are in [the model guide](dependency-migration/MODELS.md) and [the migration README](dependency-migration/README.md). All new attempts use the unified 240-second work budget and `freeze-240s.json`; do not use the old status claims below as current readiness evidence.
+Historical restart checkpoint only. It records the former 240-second policy and freeze; do not use it to start new attempts. Current setup/run instructions are in [the model guide](dependency-migration/MODELS.md) and [the migration README](dependency-migration/README.md). New attempts use the 600-second policy and a fresh `freeze-600s-v8.json` after its offline smoke passes. Historical status claims below are not current readiness evidence.
 
 Checkpoint: 2026-10-05. Restarting Windows after WSL installation. Installation completion and post-reboot WSL status have not yet been verified.
 

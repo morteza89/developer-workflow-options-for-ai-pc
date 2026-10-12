@@ -1,3 +1,4 @@
+
 # Model Setup and Qualification
 
 These instructions are preparation, not timed agent work. Do not download both large models simultaneously or assume both can remain resident on 32 GB RAM.
@@ -89,31 +90,30 @@ Confirm returned model `qwen3.8-27b-ov`, meaningful content and native usage. Re
 
 ### 6. Prepare a New Laptop Profile, Then the Benchmark
 
-Do not assume the reference host's private profile exists in a clone. Copy [profiles/local-27b.json](profiles/local-27b.json) to a new private profile without overwriting an existing file. Adjust these fields before using it:
+Do not assume a private profile exists in a clone. For the tested article export, copy [profiles/article-27b.json](profiles/article-27b.json) to `profiles/ptl-morteza89-27b.private.json` without overwriting an existing file. This is the working 27B export; the unsupported OpenVINO 27B candidate profile was removed. Replace every `REQUIRED` host/evidence value with measurements from the current machine and keep `qualified: false` until the qualification gates pass.
 
-| Field | Working article configuration |
-|---|---|
-| `label` | A unique label for the new laptop and export |
-| `base_url` | `http://127.0.0.1:8000/v3` |
-| `model`, `expected_returned_model` | `qwen3.8-27b-ov` |
-| `extra_body.chat_template_kwargs.enable_thinking` | `false` |
-| `qualified` | `false` until independently qualified |
-| `host` | Replace all copied PTL identity/settings with the new laptop's facts |
-| `inference.model_repository` | Add `Morteza89/qwen3.8-27b-int4-ov` |
-| `inference.model_revision` | `0b379da0a1b2aa7987693b253724f19ad82928f1` |
-| `inference.runtime` | Exact observed versions from step 2 |
-| `inference.context_limit` | `null` until actual capacity is established, not the template's assumed 8192 |
-| `inference.cache_policy` | Record dynamic KV default, prefix caching on, max sequences default 256, disk compilation cache and warm/cold condition. This profile captures configuration, not per-attempt prefix-cache hits; repeated prompts may benefit from cache reuse. |
+| Field                                               | Working article configuration                                                                                                                                                                                                                   |
+| --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `label`                                           | A unique label for the new laptop and export                                                                                                                                                                                                    |
+| `base_url`                                        | `http://127.0.0.1:8000/v3`                                                                                                                                                                                                                    |
+| `model`, `expected_returned_model`              | `qwen3.8-27b-ov`                                                                                                                                                                                                                              |
+| `extra_body.chat_template_kwargs.enable_thinking` | `false`                                                                                                                                                                                                                                       |
+| `qualified`                                       | `false` until independently qualified                                                                                                                                                                                                         |
+| `host`                                            | Fill all `REQUIRED` values with this laptop's measured identity/settings                                                                                                                                                                        |
+| `inference.model_revision`                        | `0b379da0a1b2aa7987693b253724f19ad82928f1`                                                                                                                                                                                                    |
+| `inference.runtime`                               | Exact observed versions from step 2                                                                                                                                                                                                             |
+| `inference.context_limit`                         | `null` until actual capacity is established, not the template's assumed 8192                                                                                                                                                                  |
+| `inference.cache_policy`                          | Record dynamic KV default, prefix caching on, max sequences default 256, disk compilation cache and warm/cold condition. This profile captures configuration, not per-attempt prefix-cache hits; repeated prompts may benefit from cache reuse. |
 
 Fill artifact/template/runtime hashes, startup time, memory and GPU/offline evidence using this laptop's measurements. Use [Complete a Local Profile](#complete-a-local-profile) for the remaining fields. Do not copy the original host's qualification claims.
 
 Then follow [README.md](README.md) for locked environments, fixture checks, Linux task image, freeze, offline smoke and a local pilot. For a same-task cross-laptop comparison, transfer the exact matching source/freeze and Docker image via `docker save`/`docker load`; record each host separately and run its own smoke. A rebuild may have a different image ID. Do not copy Windows virtual environments.
 
-**Current benchmark policy (October 9):** every local and cloud attempt receives 240 seconds of agent work, followed by separate evaluation of saved files. Policy, task instructions and tests agree. Use `artifacts/freeze-240s-v3.json` with this exact source and image, and run its smoke on each laptop. Do not reuse older freezes against modified source or overwrite historical evidence.
+**Current benchmark policy (October 12):** every local and cloud attempt receives 600 seconds (10 minutes) of agent work, followed by separate evaluation of saved files. Policy, task instructions and tests use this limit. Create `artifacts/freeze-600s-v8.json` for the revised source and image, then run its smoke on each laptop. Earlier 240-second freezes and attempts are historical; do not reuse them with this policy or overwrite them.
 
 ## Current Host: Working Article 27B
 
-The user's [tested notebook](https://github.com/morteza89/vscode-copilot-local-model-ovms) uses **Morteza89/qwen3.8-27b-int4-ov**, revision `0b379da0a1b2aa7987693b253724f19ad82928f1`. This is a distinct export from the OpenVINO 27B candidate below. It is already downloaded into `models/morteza89-qwen3.8-27b-int4-ov`; do not download it again or replace it with another export.
+The user's [tested notebook](https://github.com/morteza89/vscode-copilot-local-model-ovms) uses **Morteza89/qwen3.8-27b-int4-ov**, revision `0b379da0a1b2aa7987693b253724f19ad82928f1`. This is the tested article export. It exists in this workspace, but `models/` is Git-ignored; on a fresh clone, follow step 3 to download the exact revision. Do not substitute another export.
 
 If its server is already running, leave it running. Otherwise, with no other OVMS server using port 8000, start the saved launcher from a clean PowerShell terminal:
 
@@ -124,22 +124,21 @@ Set-Location C:\projects\Developer_Workflow_Options_for_AI_PC
 
 [The launcher](../models/start-27b-article.cmd) initializes OVMS only in its child CMD process and serves directly with `--target_device GPU`, prefix caching enabled and a separate disk compilation cache. It does not use `--configure`, a serving JSON, fixed KV-cache overrides, or parser overrides. The observed runtime defaults are dynamic KV cache (`cache_size=0`) and `max_num_seqs=256`; disk compilation cache is not KV cache. Do not apply the 8B fixed-cache recipe below to this working setup.
 
-OVMS `2026.4.0.869b2186` with OpenVINO/GenAI 2026.4 loaded this export and reached `AVAILABLE` in about 38 seconds. `/v3/chat/completions` returned chat content and a valid native tool call under model ID `qwen3.8-27b-ov`. The benchmark uses the same text-action agent loop as the other models, not that native tool API, and requests non-thinking output. The [private pilot profile](profiles/ptl-morteza89-27b.private.json) records this export, endpoint, and cache policy; it remains unqualified.
+OVMS `2026.4.0.869b2186` with OpenVINO/GenAI 2026.4 loaded this export and reached `AVAILABLE` in about 38 seconds. `/v3/chat/completions` returned chat content and a valid native tool call under model ID `qwen3.8-27b-ov`. The benchmark uses the same text-action agent loop as the other models, not that native tool API, and requests non-thinking output. The v8 PTL pilot was accepted (39/39 contract/native checks and 12/12 generated tests) in 432.99 seconds; this is one unscored result, not qualification. [The private profile](profiles/ptl-morteza89-27b.private.json) records this machine and configuration but still requires qualification evidence.
 
-Use a separate clean PowerShell for the benchmark and the current 240-second freeze. A historical shorter-budget local attempt passed all 38 contract/native checks but produced no generated tests; it is not a result for the current package. Full task acceptance remains pending. Older pilots and the unbounded repetition failure remain separate results. Before a new attempt, confirm the previous OVMS request has ended; restart the server manually if it remains busy after cancelling the client. Independent GPU/memory qualification remains pending. Prefix caching differs from the earlier 8B setup and must be disclosed.
+Use a separate clean PowerShell for the benchmark and the current 600-second freeze. The v8 27B pilot was accepted once; repeated attempts and independent GPU/memory qualification remain pending. Earlier 240-second runs are historical. Before a new attempt, confirm the previous OVMS request has ended; restart the server manually if it remains busy after cancelling the client. Prefix caching differs between 27B and 8B and must be disclosed.
 
 ## Candidates
 
-| Profile | Exact artifact | Choice and memory caveat |
-|---|---|---|
-| [local-8b.json](profiles/local-8b.json) | OpenVINO/Qwen3-8B-int8-ov | Preferred first 8B candidate. About 8 GB of weights at an idealized one byte/parameter, plus runtime, cache, OS and Docker overhead; not a measured allocation |
-| Separate 8B INT4 profile | OpenVINO/Qwen3-8B-int4-ov | About 4 GB idealized weights; use as a distinct configuration if INT8 lacks headroom |
-| [local-27b.json](profiles/local-27b.json) | OpenVINO/Qwen3.8-27B-int4-ov | Original requested export; its fixed-cache startup failed on this host. Not the working article export |
-| [Article pilot](profiles/ptl-morteza89-27b.private.json) | Morteza89/qwen3.8-27b-int4-ov | Loaded successfully using the launcher above; task acceptance still pending |
+| Profile                                                 | Exact artifact                | Choice and memory caveat                                                                                                                                       |
+| ------------------------------------------------------- | ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [local-8b.json](profiles/local-8b.json)                  | OpenVINO/Qwen3-8B-int8-ov     | Preferred first 8B candidate. About 8 GB of weights at an idealized one byte/parameter, plus runtime, cache, OS and Docker overhead; not a measured allocation |
+| Separate 8B INT4 profile                                | OpenVINO/Qwen3-8B-int4-ov     | About 4 GB idealized weights; use as a distinct configuration if INT8 lacks headroom                                                                           |
+| [article-27b.json](profiles/article-27b.json)            | Morteza89/qwen3.8-27b-int4-ov | Tested article export and reusable profile template; accepted in one 600-second PTL pilot, still unqualified |
 
-32 GB is shared system memory, not a guaranteed GPU budget. Windows WDDM shared-memory limits, paging, the desktop, and Docker can prevent a load despite nominal weight size. Follow the artifact's verified serving recipe. Measure peak system commit, resident memory, GPU allocation and paging under the real task, not just loading. Record failures to fit and how much of the migration passes within the same four-minute work budget. A different export or quantization is a separately recorded configuration.
+System RAM is shared with Windows, WDDM, the desktop, Docker and the model server; model weights alone do not predict whether a configuration fits. Follow the artifact's verified serving recipe. Measure peak system commit, resident memory, GPU allocation and paging under the real task, not just loading. Record failures to fit and how much of the migration passes within the same 10-minute work budget. A different export or quantization is a separately recorded configuration.
 
-The observed authoring host is Core Ultra X7 358H, Arc B390, Windows 11 Pro, 31.4 GiB RAM, driver 32.0.101.8724, BIOS UX5406AA.110. This identifies a machine; it does not establish model support. Record power mode, thermals, exact OS build and available memory for each run set.
+The original reference host was Core Ultra X7 358H / Arc B390 with 31.4 GiB RAM and BIOS UX5406AA.110. The current comparison workstation is ASUS NUC16GDKX76 / Arc B390 with 63.4 GiB RAM, Windows 11 Pro build 26200, driver 32.0.101.8860 and BIOS GDPTL579.0039.2026.0420.2004. Record power mode, thermals and available memory for every run set; model loading alone does not establish GPU activity or qualification.
 
 ## OVMS Preparation
 
@@ -161,7 +160,7 @@ cmd.exe /k "call setupvars.bat"
 
 After the initialization message, run only the Command Prompt/OVMS commands in that terminal. `exit` returns to the original PowerShell; otherwise leave it open for the server. Use a separate clean PowerShell terminal for the PowerShell blocks below.
 
-**8B setup retained for later comparison:** the weights, [serving JSON](../models/migration-ovms.json), and generated graph already exist. The server reached `AVAILABLE`, and `/v1/chat/completions` returned `READY` on 2026-10-05. Skip download/configure/JSON regeneration on this host. The model directory is `C:\projects\Developer_Workflow_Options_for_AI_PC\models\qwen3-8b-int8`. Stop the 27B server before starting 8B. Use the current freeze in [README.md](README.md), not the historical timed policy; keep the profile unqualified until task and hardware qualification pass.
+**8B setup in this workspace:** the weights, generated `graph.pbtxt`, and `models/migration-ovms.json` are local Git-ignored assets. A fresh clone will not contain them. Check each path before setup: skip the pinned download only if weights exist; run the configure command below if `graph.pbtxt` is missing; generate `migration-ovms.json` if it is missing, and verify its model ID and base path if it already exists. Stop the 27B server before starting 8B. Keep the profile unqualified until task and hardware qualification pass.
 
 ### Install OVMS on a New Host
 
@@ -272,13 +271,49 @@ There is no runner character guard or automatic context compaction. Profile temp
 
 Only after the Docker smoke and an actual read/edit/test pilot succeed should you set `qualified: true`. A model that can answer READY but cannot repair the service is not task-qualified. Preserve memory failures and rejected pilots; keep `qualified` false until the gate is satisfied.
 
+## OpenAI API Through the Same Agent
+
+This is a direct OpenAI API run through the benchmark's OpenAI Responses API adapter. It is **not** a VS Code Copilot Chat run: Copilot model access and ChatGPT subscriptions do not provide API credentials or cover API usage. The current comparison uses this OpenAI configuration instead of Claude in the cloud slot; keep those results labeled separately.
+
+The pinned candidate is **GPT-6.1 Sol**, model ID `gpt-6.1-sol`, with standard service tier and medium reasoning effort. It supports the Responses API. The saved profile template is [profiles/openai.json](profiles/openai.json). The rate card records the current short-context rates ($2/M input, $0.10/M cached input, $2.50/M cache write, $10/M output) and long-context rates for requests over 272,000 input tokens. Check [OpenAI&#39;s model page](https://developers.openai.com/api/docs/models/gpt-6.1-sol) and [pricing page](https://developers.openai.com/api/docs/pricing) again immediately before a study; account availability and rates can change.
+
+1. In the [OpenAI API platform](https://platform.openai.com/), confirm API access, available credit, and the organization/project spend limits. API credit is separate from ChatGPT and Copilot plans. Set a spend limit you are comfortable with; the runner's 600-second work deadline is not a dollar cap.
+2. Create a private copy of the template without overwriting an existing profile:
+
+   ```powershell
+   if (-not (Test-Path profiles\ptl-openai.private.json)) { Copy-Item profiles\openai.json profiles\ptl-openai.private.json }
+   ```
+3. Review the copied profile. Keep model ID and expected returned model as `gpt-6.1-sol`, and `qualified: false`. Replace host placeholders with this machine's facts. Do not put the API key in the profile.
+4. Create a project API key in the [API keys page](https://platform.openai.com/api-keys). In the same PowerShell process that will run the benchmark, set it as a temporary environment variable using hidden input:
+
+   ```powershell
+   $secureKey = Read-Host 'OpenAI API key (input hidden)' -AsSecureString
+   $keyPointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secureKey)
+   try { $env:OPENAI_API_KEY = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($keyPointer) }
+   finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($keyPointer); $secureKey.Dispose() }
+   ```
+
+   The key is not written to the profile or shell command history. It is available to child processes of this PowerShell window; close that window after the run to remove the process-scoped variable. Never paste the key into chat.
+5. First make a small, unscored API warmup and verify the returned ID and usage:
+
+   ```powershell
+   .\.venv-runner\Scripts\python.exe -c "from openai import OpenAI; r=OpenAI(max_retries=0).responses.create(model='gpt-6.1-sol', input='Reply READY only.', max_output_tokens=64, reasoning={'effort':'medium'}); print({'model':r.model,'text':r.output_text,'usage':r.usage.model_dump() if r.usage else None})"
+   ```
+6. Run one unscored pilot from `dependency-migration`, against the same frozen task as the local attempts:
+
+   ```powershell
+   .\.venv-runner\Scripts\python.exe bench.py run --profile profiles\ptl-openai.private.json --freeze artifacts\freeze-600s-v8.json --allow-cloud
+   ```
+
+The runner records native input/output, cached input and cache-write tokens and estimates cost using the saved standard rate card. A usage mismatch or missing rate data produces an unknown fee rather than zero. Local evaluation runs after model work stops. Provider-side requests already in flight may remain billable after client termination. Keep this pilot unscored and the profile unqualified until the result, host metadata, and measurements have been reviewed.
+
 ## Claude Through the Same Agent
 
 Copy [profiles/claude.json](profiles/claude.json) to your private study profile. Choose one exact, currently accessible Claude API model ID, not a `latest` alias. A documented example is `claude-sonnet-4-5-20250929`, but its availability and price on your account must be checked before use. Fill both model identity fields, local host metadata, the saved rate-card timestamp/source, service tier, and all five USD-per-million token rates.
 
 Use the standard non-streaming Messages API, no explicit prompt-cache markers, no extended-thinking parameter, and the common output limit/temperature. If your chosen model does not support these settings, qualify a supported fixed model or change the common policy before freezing. The raw response usage still records cache fields when returned. The runner charges input, output, cache reads, five-minute writes and one-hour writes separately; incomplete usage is reported as unknown. Reconcile any unresolved charges against the provider's billing records.
 
-Set `ANTHROPIC_API_KEY` directly in your terminal or approved secret manager, never in a JSON file or chat. Cloud calls require `--allow-cloud`, including pilots. No cloud call was made during package authoring. The same 240-second work budget applies; **it is not a dollar spending cap**. Review pricing and provider-side spending controls. Client termination does not guarantee server-side work stops immediately, and incomplete usage/fees remain unknown until reconciled. Provider errors are recorded separately from the work deadline. Evaluation happens locally after model work stops.
+Set `ANTHROPIC_API_KEY` directly in your terminal or approved secret manager, never in a JSON file or chat. Cloud calls require `--allow-cloud`, including pilots. No cloud call was made during package authoring. The same 600-second work budget applies; **it is not a dollar spending cap**. Review pricing and provider-side spending controls. Client termination does not guarantee server-side work stops immediately, and incomplete usage/fees remain unknown until reconciled. Provider errors are recorded separately from the work deadline. Evaluation happens locally after model work stops.
 
 ## Source Checks
 

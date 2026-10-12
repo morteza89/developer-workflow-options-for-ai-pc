@@ -3,6 +3,7 @@
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import time
 
@@ -14,6 +15,56 @@ def append_event(path, event):
 
 def request_options(profile, policy):
     return {"model": profile["model"], "max_tokens": policy["max_output_tokens"], "temperature": policy["temperature"], "timeout": policy.get("request_timeout_seconds", policy["deadline_seconds"]), "extra_body": profile["extra_body"]}
+
+
+def render_system_template(policy):
+    template = policy["system_template"]
+    deadline = policy["deadline_seconds"]
+    if deadline is not None:
+        template = re.sub(r"\d+(?= seconds(?: total)?)", str(deadline), template)
+    return template
+
+
+def openai_response_input(messages):
+    return [{"role": message["role"], "content": message.get("content") or ""} for message in messages[1:]]
+
+
+def openai_response_options(profile, policy, messages):
+    return {
+        "model": profile["model"],
+        "instructions": messages[0]["content"],
+        "input": openai_response_input(messages),
+        "max_output_tokens": policy["max_output_tokens"],
+        "reasoning": {"effort": profile["inference"]["reasoning_effort"]},
+        "timeout": policy.get("request_timeout_seconds", policy["deadline_seconds"]),
+    }
+
+
+def openai_finish_reason(response):
+    if response.status == "completed":
+        return "stop"
+    if response.status == "incomplete" and getattr(response.incomplete_details, "reason", None) == "max_output_tokens":
+        return "length"
+    return response.status
+
+
+def normalize_openai_action(text):
+    actions = re.findall(r"```mswea_bash_command\s*\n(.*?)\n```", text, re.DOTALL)
+    if len(actions) <= 1:
+        return text, len(actions)
+    return f"```mswea_bash_command\n{actions[0]}\n```", len(actions)
+
+
+def request_error_details(error):
+    details = {"error_type": type(error).__name__}
+    for attribute in ("status_code", "code", "param", "request_id"):
+        value = getattr(error, attribute, None)
+        if value is not None:
+            details[attribute] = value
+    message = getattr(error, "message", None)
+    if message:
+        details["message"] = re.sub(r"sk-[A-Za-z0-9_-]{20,}", "[REDACTED]", str(message))[:500]
+    return details
 
 
 def review_submission(output, connection):
@@ -45,6 +96,8 @@ def run_worker(connection, profile, policy, image, container_name, prepared, out
         client = None
     elif profile["provider"] == "local":
         client = openai.OpenAI(base_url=profile["base_url"], api_key="unused", **client_options)
+    elif profile["provider"] == "openai":
+        client = openai.OpenAI(api_key=os.environ[profile["api_key_env"]], **client_options)
     else:
         client = anthropic.Anthropic(api_key=os.environ[profile["api_key_env"]], base_url=profile["base_url"], **client_options)
 
@@ -73,18 +126,27 @@ def run_worker(connection, profile, policy, image, container_name, prepared, out
                     response = client.chat.completions.create(messages=messages, **options)
                     text = response.choices[0].message.content or ""
                     finish = response.choices[0].finish_reason
+                elif profile["provider"] == "openai":
+                    response = client.responses.create(**openai_response_options(profile, policy, messages))
+                    raw_text = response.output_text or ""
+                    text, action_block_count = normalize_openai_action(raw_text)
+                    finish = openai_finish_reason(response)
                 else:
                     response = client.messages.create(system=messages[0]["content"], messages=messages[1:], **options)
                     text = "".join(block.text for block in response.content if block.type == "text")
                     finish = response.stop_reason
-                append_event(events, {"kind": "request_end", "at": time.perf_counter(), "seconds": time.perf_counter() - started, "model": response.model, "usage": response.usage.model_dump() if response.usage else None, "response_id": response.id, "finish_reason": finish, "content": text})
+                event = {"kind": "request_end", "at": time.perf_counter(), "seconds": time.perf_counter() - started, "model": response.model, "usage": response.usage.model_dump() if response.usage else None, "response_id": response.id, "finish_reason": finish, "content": raw_text if profile["provider"] == "openai" else text}
+                if profile["provider"] == "openai" and action_block_count > 1:
+                    event["normalized_action_blocks"] = action_block_count
+                    event["agent_content"] = text
+                append_event(events, event)
                 print(f"Model response received in {time.perf_counter() - started:.1f}s.", flush=True)
                 if response.model != profile["expected_returned_model"]:
                     append_event(events, {"kind": "identity_mismatch", "expected": profile["expected_returned_model"], "returned": response.model})
                     raise RuntimeError("Returned model identity mismatch")
                 return litellm.ModelResponse(model=response.model, choices=[{"message": {"role": "assistant", "content": text}, "finish_reason": finish}])
             except Exception as error:
-                append_event(events, {"kind": "request_error", "at": time.perf_counter(), "seconds": time.perf_counter() - started, "error_type": type(error).__name__})
+                append_event(events, {"kind": "request_error", "at": time.perf_counter(), "seconds": time.perf_counter() - started, **request_error_details(error)})
                 raise RuntimeError(f"Model request failed: {type(error).__name__}") from None
 
     class RecordedEnvironment(DockerEnvironment):
@@ -115,7 +177,7 @@ def run_worker(connection, profile, policy, image, container_name, prepared, out
     try:
         model = RecordedModel(model_name=profile["model"], cost_tracking="ignore_errors", litellm_model_registry=None, format_error_template=policy["format_error_template"])
         environment = RecordedEnvironment(image=image, cwd="/task", timeout=policy["tool_timeout_seconds"] + 2, interpreter=["timeout", "-k", "1", str(policy["tool_timeout_seconds"]), "bash", "-lc"])
-        agent = DefaultAgent(model, environment, system_template=policy["system_template"], instance_template=policy["instance_template"], step_limit=policy["step_limit"], cost_limit=0, wall_time_limit_seconds=0, max_consecutive_format_errors=0, output_path=output / "trajectory.json")
+        agent = DefaultAgent(model, environment, system_template=render_system_template(policy), instance_template=policy["instance_template"], step_limit=policy["step_limit"], cost_limit=0, wall_time_limit_seconds=0, max_consecutive_format_errors=0, output_path=output / "trajectory.json")
         task = (Path(prepared) / "TASK.md").read_text(encoding="utf-8")
         connection.send({"kind": "ready"})
         connection.recv()

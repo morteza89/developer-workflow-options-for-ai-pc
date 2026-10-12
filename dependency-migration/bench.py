@@ -103,8 +103,13 @@ def validate_profile(profile, scored, allow_cloud):
             raise ValueError("Cloud requires the fixed Anthropic endpoint and --allow-cloud")
         if not os.environ.get(profile["api_key_env"]):
             raise ValueError("Set the named API key environment variable outside chat; do not put the key in a file")
+    elif provider == "openai":
+        if profile["base_url"] != "https://api.openai.com/v1" or not allow_cloud:
+            raise ValueError("OpenAI cloud runs require the fixed endpoint and --allow-cloud")
+        if not os.environ.get(profile["api_key_env"]):
+            raise ValueError("Set the named API key environment variable outside chat; do not put the key in a file")
     else:
-        raise ValueError("Only local and anthropic providers are supported")
+        raise ValueError("Only local, anthropic, and openai providers are supported")
     if set(profile["extra_body"]) - {"chat_template_kwargs"}:
         raise ValueError("extra_body may only configure chat_template_kwargs")
     if scored:
@@ -120,6 +125,13 @@ def validate_profile(profile, scored, allow_cloud):
             for key in ("input_per_million", "output_per_million", "cache_read_per_million", "cache_write_5m_per_million", "cache_write_1h_per_million"):
                 if not isinstance(card[key], (int, float)) or card[key] < 0:
                     raise ValueError("Complete the saved provider rate card")
+        elif provider == "openai":
+            card = profile["rate_card"]
+            for tier in ("short_context", "long_context"):
+                for key in ("input_per_million", "cached_input_per_million", "cache_write_per_million", "output_per_million"):
+                    value = card[tier][key]
+                    if not isinstance(value, (int, float)) or value < 0:
+                        raise ValueError("Complete the saved provider rate card")
 
 
 def collect_submission(exported, destination):
@@ -266,9 +278,39 @@ def read_events(output):
     return events
 
 
+def openai_api_fee(card, events):
+    responses = [event for event in events if event["kind"] == "request_end"]
+    if len(responses) != sum(event["kind"] == "request_start" for event in events):
+        return None
+    total = 0.0
+    threshold = card["long_context_threshold_tokens"]
+    for response in responses:
+        usage = response.get("usage")
+        details = (usage or {}).get("input_tokens_details")
+        if not usage or not isinstance(details, dict):
+            return None
+        input_tokens = usage.get("input_tokens")
+        output_tokens = usage.get("output_tokens")
+        cached_tokens = details.get("cached_tokens", 0) or 0
+        cache_write_tokens = details.get("cache_write_tokens", 0) or 0
+        if not isinstance(input_tokens, int) or not isinstance(output_tokens, int):
+            return None
+        if cached_tokens + cache_write_tokens > input_tokens:
+            return None
+        tier = card["long_context"] if input_tokens > threshold else card["short_context"]
+        uncached_tokens = input_tokens - cached_tokens - cache_write_tokens
+        total += uncached_tokens * tier["input_per_million"] / 1_000_000
+        total += cached_tokens * tier["cached_input_per_million"] / 1_000_000
+        total += cache_write_tokens * tier["cache_write_per_million"] / 1_000_000
+        total += output_tokens * tier["output_per_million"] / 1_000_000
+    return total
+
+
 def api_fee(profile, events):
     if profile["provider"] in ("local", "mock"):
         return 0.0
+    if profile["provider"] == "openai":
+        return openai_api_fee(profile["rate_card"], events)
     responses = [event for event in events if event["kind"] == "request_end"]
     if len(responses) != sum(event["kind"] == "request_start" for event in events):
         return None
@@ -322,7 +364,8 @@ def usage_metrics(events):
     seconds = sum(response.get("seconds", 0) for response in responses)
     output_tokens = sum((response.get("usage") or {}).get("completion_tokens", (response.get("usage") or {}).get("output_tokens", 0)) for response in responses)
     known = all(response.get("usage") is not None for response in responses)
-    return {"native_usage_totals": totals, "usage_complete": known and len(responses) == sum(event["kind"] == "request_start" for event in events), "completed_model_calls": len(responses), "completed_request_output_tokens_per_second": output_tokens / seconds if known and seconds else None}
+    normalized = [event.get("normalized_action_blocks", 1) for event in responses if event.get("normalized_action_blocks", 1) > 1]
+    return {"native_usage_totals": totals, "usage_complete": known and len(responses) == sum(event["kind"] == "request_start" for event in events), "completed_model_calls": len(responses), "completed_request_output_tokens_per_second": output_tokens / seconds if known and seconds else None, "normalized_action_response_count": len(normalized), "discarded_action_block_count": sum(count - 1 for count in normalized)}
 
 
 def wait_for_worker(connection, started, deadline_seconds, on_submission):
@@ -513,7 +556,7 @@ def report(directory):
         completion_times = [attempt["completion_seconds"] for attempt in accepted if attempt.get("completion_seconds") is not None]
         row.update(provider=attempts[0].get("provider"), model=attempts[0].get("model"), execution_mode=attempts[0].get("execution_mode", "legacy_deadline"), deadline_seconds=attempts[0].get("deadline_seconds"), acceptance_rate=len(accepted) / len(attempts), median_completion_seconds=statistics.median(completion_times) if completion_times else None, native_usage_totals=native_totals, usage_complete=all(attempt.get("usage_complete", False) for attempt in attempts), cleanup_failures=sum(bool(attempt.get("cleanup_error") or attempt.get("volume_cleanup_error") or attempt.get("verification", {}).get("cleanup_errors")) for attempt in attempts), contract_passes=sum(attempt.get("verification", {}).get("checks", {}).get("contract", False) for attempt in attempts), generated_test_passes=sum(attempt.get("verification", {}).get("checks", {}).get("generated", False) for attempt in attempts))
         row["evaluation_results"] = [{"attempt_id": attempt.get("attempt_id"), "stop_reason": attempt.get("exit_status", attempt["category"]), "test_results": attempt.get("verification", {}).get("test_results", {}), "regression_issue": attempt.get("verification", {}).get("regression_issue"), "phase_errors": attempt.get("verification", {}).get("phase_errors", {}), "submission_violations": attempt.get("submission_violations", [])} for attempt in attempts]
-        for metric in ("model_calls", "tool_calls", "failed_tool_calls", "rejected_submissions", "submission_checks", "incomplete_request_count", "request_seconds", "tool_seconds", "verifier_seconds", "submission_check_seconds"):
+        for metric in ("model_calls", "tool_calls", "failed_tool_calls", "rejected_submissions", "submission_checks", "incomplete_request_count", "normalized_action_response_count", "discarded_action_block_count", "request_seconds", "tool_seconds", "verifier_seconds", "submission_check_seconds"):
             values = [attempt.get(metric) for attempt in attempts]
             row["total_" + metric] = sum(values) if all(value is not None for value in values) else None
     print(json.dumps(rows, indent=2))
@@ -525,10 +568,10 @@ def main():
     commands = parser.add_subparsers(dest="command", required=True)
     freeze = commands.add_parser("freeze")
     freeze.add_argument("--image", default="migration-task:0.1")
-    freeze.add_argument("--output", type=Path, default=ROOT / "artifacts/freeze-240s-v3.json")
+    freeze.add_argument("--output", type=Path, default=ROOT / "artifacts/freeze-600s-v8.json")
     for name in ("run", "smoke"):
         command = commands.add_parser(name)
-        command.add_argument("--freeze", type=Path, default=ROOT / "artifacts/freeze-240s-v3.json")
+        command.add_argument("--freeze", type=Path, default=ROOT / "artifacts/freeze-600s-v8.json")
         if name == "smoke":
             command.add_argument("--deadline-probe", action="store_true", help="Write partial repairs then simulate an unresponsive model until the frozen deadline")
         if name == "run":
