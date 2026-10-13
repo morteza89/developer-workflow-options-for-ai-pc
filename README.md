@@ -1,16 +1,16 @@
 # AI PC Developer Workflows
 
-**To reproduce the working local model on another laptop:** follow [the Windows 27B replication guide](dependency-migration/MODELS.md#replicate-on-another-windows-laptop), then the [benchmark setup guide](dependency-migration/README.md). The current comparison policy uses a 600-second (10-minute) work budget and a new `freeze-600s-v8.json` package; older four-minute results remain historical.
+**To reproduce the working local model on another laptop:** follow [the Windows 27B replication guide](dependency-migration/MODELS.md#replicate-on-another-windows-laptop), then the [benchmark setup guide](dependency-migration/README.md). The current comparison policy uses a 600-second (10-minute) work budget and a fresh `freeze-600s-v9.json` package; older freezes and results remain historical.
 
-Start with [Dependency Migration](dependency-migration/README.md) for the current local-model pilot and its 600-second policy. Option 3, [Security Repair](security-repair/README.md), is now implemented as a separate 240-second PyJWT backport task and has passed offline verifier qualification. No model comparison or scored run has been performed for Security Repair; this work does not imply acceptance of the Dependency Migration workflow.
+Start with [Dependency Migration](dependency-migration/README.md) for the current local-model pilot and its 600-second policy. Option 3, [Security Repair](security-repair/README.md), is a separate PyJWT backport task, offline-qualified and now using a shared 600-second budget. Earlier 240-second pilots show OpenAI accepted, 27B timed out near completion, and 8B submitted incomplete; these need same-freeze 600-second reruns and are not scored results.
 
 | Folder | Scope | State |
 |---|---|---|
 | [dependency-migration](dependency-migration/README.md) | Migrate a small expense service from Pydantic v1 to native v2 | Implemented; 600-second PTL pilots: 27B and OpenAI accepted, 8B rejected; repeated qualification runs pending |
-| [security-repair](security-repair/README.md) | PyJWT security backport | Implemented; vulnerable/reference/negative controls qualified offline; model runs pending |
+| [security-repair](security-repair/README.md) | PyJWT security backport | Offline-qualified; 600-second policy; comparable local-model reruns pending |
 | [regression-tests](regression-tests/README.md) | Requests URL regression tests | Reserved; await security-repair acceptance |
 
-The [handoff](AI_PC_WORKFLOW_HANDOFF.md) documents the proposal and earlier 600-second work budget. Security Repair follows its task-specific 240-second policy. Evaluation/setup/cleanup are outside each work budget, and historical attempt records and freezes retain their original values. Infrastructure/API/context errors and manual cancellation remain possible.
+The [handoff](AI_PC_WORKFLOW_HANDOFF.md) documents the proposal and earlier 600-second work budget. Both current workflows use 600 seconds; evaluation/setup/cleanup are outside each work budget, and historical attempt records and freezes retain their original values. Infrastructure/API/context errors and manual cancellation remain possible.
 
 ## VS Code Agent
 

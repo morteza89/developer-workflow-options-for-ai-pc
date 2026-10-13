@@ -15,6 +15,6 @@
   "generated_test_path": "tests/test_generated.py",
   "require_generated_test_to_fail_on_baseline": true,
   "pydantic_warnings_as_errors": false,
-  "default_freeze": "freeze-240s-pyjwt-v4.json",
+  "default_freeze": "freeze-600s-pyjwt-v8.json",
   "default_image": "pyjwt-security:0.1"
 }

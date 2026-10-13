@@ -596,11 +596,11 @@ def test_report_retains_partial_deadline_evaluation(tmp_path):
 def test_comparison_report_filters_freeze_and_summarizes_models(tmp_path):
     frozen = {"created_at": "current", "image": "sha256:current", "hashes": {"task": "current"}}
     records = [
-        ("27b", "local", "qwen3.8-27b-ov", True, 0, 39, 39),
-        ("8b", "local", "OpenVINO/Qwen3-8B-int8-ov", False, 0, 39, 0),
-        ("openai", "openai", "gpt-6.1-sol", True, 0.25, 39, 27),
+        ("27b", "local", "qwen3.8-27b-ov", True, 0, 39, 39, 6.5),
+        ("8b", "local", "OpenVINO/Qwen3-8B-int8-ov", False, 0, 39, 0, None),
+        ("openai", "openai", "gpt-6.1-sol", True, 0.25, 39, 27, 34.0),
     ]
-    for name, provider, model, accepted, api_fee, contract_passed, generated_passed in records:
+    for name, provider, model, accepted, api_fee, contract_passed, generated_passed, output_rate in records:
         attempt = tmp_path / f"attempt-{name}"
         attempt.mkdir()
         bench.save(attempt / "freeze.json", frozen)
@@ -619,6 +619,7 @@ def test_comparison_report_filters_freeze_and_summarizes_models(tmp_path):
             "agent_seconds": 30,
             "through_verification_seconds": 32,
             "api_fee_usd": api_fee,
+            "completed_request_output_tokens_per_second": output_rate,
             "native_usage_totals": {"input_tokens": 1000, "output_tokens": 200},
             "verification": {"test_results": {
                 "contract": {"passed": contract_passed, "total": 39},
@@ -629,7 +630,13 @@ def test_comparison_report_filters_freeze_and_summarizes_models(tmp_path):
     old = tmp_path / "attempt-old"
     old.mkdir()
     bench.save(old / "freeze.json", {"created_at": "old"})
-    bench.save(old / "result.json", {"attempt_id": old.name, "label": "old"})
+    bench.save(old / "result.json", {
+        "attempt_id": old.name,
+        "label": "old",
+        "provider": "local",
+        "model": "older-model",
+        "mock": False,
+    })
     profile_paths = []
     for index, (name, provider, model, *_rest) in enumerate(records):
         path = tmp_path / f"profile-{index}.json"
@@ -641,13 +648,26 @@ def test_comparison_report_filters_freeze_and_summarizes_models(tmp_path):
             "inference": {"device": device, "runtime": "test-runtime"},
         })
         profile_paths.append(path)
+    old_profile = tmp_path / "profile-old.json"
+    bench.save(old_profile, {
+        "label": "old model",
+        "provider": "local",
+        "model": "older-model",
+    })
+    profile_paths.append(old_profile)
 
     report = comparison_report.render_report(tmp_path, frozen, profile_paths)
     assert "Matching model attempts: 3; other saved attempts excluded: 1; matching mock attempts excluded: 0" in report
-    assert "| 8b | local / OpenVINO/Qwen3-8B-int8-ov | GPU; test-runtime | 1 | ready |" in report
-    assert "| openai | openai / gpt-6.1-sol | provider-managed; test-runtime | 1 | ready |" in report
+    assert "| 8b | local / OpenVINO/Qwen3-8B-int8-ov | GPU; test-runtime | 1 | 0 | ready |" in report
+    assert "| openai | openai / gpt-6.1-sol | provider-managed; test-runtime | 1 | 0 | ready |" in report
+    assert "| old model | local / older-model | unknown; unknown | 0 | 1 | RERUN (1 other freeze) |" in report
     assert "| openai | openai / gpt-6.1-sol | pilot | `current-task` | 1 | 1 | 1/1 (100%)" in report
+    assert "| openai | openai / gpt-6.1-sol | pilot | `current-task` | 1 | 1 | 1/1 (100%) | 32.0s | 34.0 |" in report
+    assert "| openai | `attempt-openai` | accepted | Submitted | 30.0s | 32.0s | 34.0 |" in report
+    assert "| 8b | local / OpenVINO/Qwen3-8B-int8-ov | pilot | `current-task` | 1 | 0 | 0/1 (0%) | n/a | n/a |" in report
     assert "39/39" in report
     assert "0/27" in report
     assert "$0.2500" in report
     assert "`attempt-old`" not in report
+    security_report = comparison_report.render_report(tmp_path, frozen, profile_paths, title="Security Repair Comparison")
+    assert security_report.startswith("# Security Repair Comparison\n")

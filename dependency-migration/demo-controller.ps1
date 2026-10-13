@@ -1,17 +1,29 @@
 #requires -Version 5.1
+param(
+    [ValidateSet('dependency-migration', 'security-repair')]
+    [string]$Workflow = 'dependency-migration'
+)
 
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
-$script:workflowRoot = $PSScriptRoot
-$script:workspaceRoot = Split-Path -Parent $script:workflowRoot
+$script:engineRoot = $PSScriptRoot
+$script:workspaceRoot = Split-Path -Parent $script:engineRoot
+$script:workflowRoot = if ($Workflow -eq 'security-repair') { Join-Path $script:workspaceRoot 'security-repair' } else { $script:engineRoot }
+$script:profileRoot = Join-Path $script:engineRoot 'profiles'
 $script:modelRoot = Join-Path $script:workspaceRoot 'models'
 $script:ovmsRoot = Join-Path $script:workspaceRoot 'ovms_downloaded\windows-2026.4.0-python-on\ovms'
-$script:runnerPython = Join-Path $script:workflowRoot '.venv-runner\Scripts\python.exe'
-$script:freezePath = Join-Path $script:workflowRoot 'artifacts\freeze-600s-v8.json'
+$script:runnerPython = Join-Path $script:engineRoot '.venv-runner\Scripts\python.exe'
+$script:benchScript = Join-Path $script:workflowRoot 'bench.py'
+$script:reportScript = Join-Path $script:engineRoot 'comparison_report.py'
+$script:freezePath = if ($Workflow -eq 'security-repair') { Join-Path $script:workflowRoot 'artifacts\freeze-600s-pyjwt-v8.json' } else { Join-Path $script:workflowRoot 'artifacts\freeze-600s-v9.json' }
+$script:deadlineSeconds = 600
 $script:artifactRoot = Join-Path $script:workflowRoot 'artifacts'
 $script:logRoot = Join-Path $script:artifactRoot 'demo-controller'
+$script:workflowTitle = if ($Workflow -eq 'security-repair') { 'Security Repair | PyJWT CVE-2022-29217' } else { 'Dependency Migration Demo Controller' }
+$script:reportTitle = if ($Workflow -eq 'security-repair') { 'Security Repair Comparison' } else { 'Dependency Migration Comparison' }
+$script:timeBudgetLabel = '10-minute'
 $script:serverProcess = $null
 $script:taskProcess = $null
 $script:serverReady = $false
@@ -19,14 +31,14 @@ $script:warmupReady = $false
 $script:openReportPath = $null
 $script:watchFiles = @{}
 $script:profilePaths = @(
-    'profiles\ptl-morteza89-27b.private.json',
-    'profiles\ptl-8b.private.json',
-    'profiles\ptl-openai.private.json'
+    'ptl-morteza89-27b.private.json',
+    'ptl-8b.private.json',
+    'ptl-openai.private.json'
 )
 $script:templatePaths = @(
-    'profiles\article-27b.json',
-    'profiles\local-8b.json',
-    'profiles\openai.json'
+    'article-27b.json',
+    'local-8b.json',
+    'openai.json'
 )
 $script:modelNames = @(
     'Qwen3.8 27B INT4 (local)',
@@ -37,21 +49,21 @@ $script:modelNames = @(
 New-Item -ItemType Directory -Force -Path $script:logRoot | Out-Null
 
 $form = New-Object System.Windows.Forms.Form
-$form.Text = 'Dependency Migration Demo Controller'
+$form.Text = $script:workflowTitle
 $form.StartPosition = 'CenterScreen'
 $form.Size = New-Object System.Drawing.Size(920, 700)
 $form.MinimumSize = New-Object System.Drawing.Size(820, 620)
 $form.Font = New-Object System.Drawing.Font('Segoe UI', 9)
 
 $title = New-Object System.Windows.Forms.Label
-$title.Text = 'Dependency Migration | Pydantic v1 to v2'
+$title.Text = $script:workflowTitle
 $title.Location = New-Object System.Drawing.Point(20, 16)
 $title.Size = New-Object System.Drawing.Size(850, 30)
 $title.Font = New-Object System.Drawing.Font('Segoe UI Semibold', 15)
 $form.Controls.Add($title)
 
 $subtitle = New-Object System.Windows.Forms.Label
-$subtitle.Text = '10-minute unscored demo runs. Each attempt uses a fresh task container and is independently verified.'
+$subtitle.Text = "$($script:timeBudgetLabel) unscored model runs. Each attempt uses a fresh task container and is independently verified."
 $subtitle.Location = New-Object System.Drawing.Point(22, 50)
 $subtitle.Size = New-Object System.Drawing.Size(850, 24)
 $form.Controls.Add($subtitle)
@@ -87,6 +99,12 @@ $freezeStatus.Text = 'Freeze: ' + (Split-Path -Leaf $script:freezePath)
 $freezeStatus.Location = New-Object System.Drawing.Point(22, 155)
 $freezeStatus.Size = New-Object System.Drawing.Size(850, 24)
 $form.Controls.Add($freezeStatus)
+
+$throughputStatus = New-Object System.Windows.Forms.Label
+$throughputStatus.Text = 'Output throughput: select a model to view its latest matching run'
+$throughputStatus.Location = New-Object System.Drawing.Point(22, 178)
+$throughputStatus.Size = New-Object System.Drawing.Size(850, 17)
+$form.Controls.Add($throughputStatus)
 
 $startButton = New-Object System.Windows.Forms.Button
 $startButton.Text = 'Start selected local model'
@@ -131,10 +149,16 @@ $comparisonButton.Location = New-Object System.Drawing.Point(220, 238)
 $comparisonButton.Size = New-Object System.Drawing.Size(195, 32)
 $form.Controls.Add($comparisonButton)
 
+$apiKeyButton = New-Object System.Windows.Forms.Button
+$apiKeyButton.Text = 'Set OpenAI API key'
+$apiKeyButton.Location = New-Object System.Drawing.Point(425, 238)
+$apiKeyButton.Size = New-Object System.Drawing.Size(165, 32)
+$form.Controls.Add($apiKeyButton)
+
 $hint = New-Object System.Windows.Forms.Label
-$hint.Text = 'For OpenAI, launch this window from the PowerShell session that has OPENAI_API_KEY set. The key is never displayed or saved by this app.'
-$hint.Location = New-Object System.Drawing.Point(425, 241)
-$hint.Size = New-Object System.Drawing.Size(440, 28)
+$hint.Text = 'Paste the key in the popup; it stays hidden and is kept only while this GUI is open.'
+$hint.Location = New-Object System.Drawing.Point(600, 241)
+$hint.Size = New-Object System.Drawing.Size(265, 28)
 $form.Controls.Add($hint)
 
 $outputBox = New-Object System.Windows.Forms.TextBox
@@ -153,18 +177,113 @@ function Write-Log([string]$Message) {
     $outputBox.AppendText("[$stamp] $Message`r`n")
 }
 
+function Show-OpenAIKeyDialog {
+    $dialog = New-Object System.Windows.Forms.Form
+    $dialog.Text = 'Set OpenAI API key'
+    $dialog.StartPosition = 'CenterParent'
+    $dialog.FormBorderStyle = 'FixedDialog'
+    $dialog.ClientSize = New-Object System.Drawing.Size(440, 142)
+    $dialog.MaximizeBox = $false
+    $dialog.MinimizeBox = $false
+    $dialog.ShowInTaskbar = $false
+
+    $label = New-Object System.Windows.Forms.Label
+    $label.Text = 'Paste your project API key. It will not be displayed, logged, or saved to disk.'
+    $label.Location = New-Object System.Drawing.Point(14, 14)
+    $label.Size = New-Object System.Drawing.Size(410, 34)
+    $dialog.Controls.Add($label)
+
+    $keyInput = New-Object System.Windows.Forms.TextBox
+    $keyInput.Location = New-Object System.Drawing.Point(14, 52)
+    $keyInput.Size = New-Object System.Drawing.Size(410, 24)
+    $keyInput.UseSystemPasswordChar = $true
+    $dialog.Controls.Add($keyInput)
+
+    $setButton = New-Object System.Windows.Forms.Button
+    $setButton.Text = 'Use for this session'
+    $setButton.Location = New-Object System.Drawing.Point(208, 94)
+    $setButton.Size = New-Object System.Drawing.Size(130, 30)
+    $setButton.DialogResult = [System.Windows.Forms.DialogResult]::OK
+    $dialog.Controls.Add($setButton)
+
+    $cancelButton = New-Object System.Windows.Forms.Button
+    $cancelButton.Text = 'Cancel'
+    $cancelButton.Location = New-Object System.Drawing.Point(348, 94)
+    $cancelButton.Size = New-Object System.Drawing.Size(76, 30)
+    $cancelButton.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
+    $dialog.Controls.Add($cancelButton)
+    $dialog.AcceptButton = $setButton
+    $dialog.CancelButton = $cancelButton
+
+    try {
+        if ($dialog.ShowDialog($form) -eq [System.Windows.Forms.DialogResult]::OK) {
+            $key = $keyInput.Text.Trim()
+            if ([string]::IsNullOrWhiteSpace($key)) {
+                [System.Windows.Forms.MessageBox]::Show('The API key is empty. No key was changed.', 'OpenAI API key', 'OK', 'Warning') | Out-Null
+            }
+            else {
+                $env:OPENAI_API_KEY = $key
+                Write-Log 'OpenAI API key set for this GUI session. The value is hidden and was not saved.'
+            }
+            $key = $null
+        }
+    }
+    finally {
+        $keyInput.Clear()
+        $dialog.Dispose()
+    }
+    Update-Status
+}
+
 function Get-SelectedModel {
     $index = $modelPicker.SelectedIndex
     if ($index -lt 0 -or $index -ge $script:profilePaths.Count) { throw 'Select a model first.' }
-    $profilePath = Join-Path $script:workflowRoot $script:profilePaths[$index]
+    $profilePath = Join-Path $script:profileRoot $script:profilePaths[$index]
     if (-not (Test-Path $profilePath)) {
-        $templatePath = Join-Path $script:workflowRoot $script:templatePaths[$index]
+        $templatePath = Join-Path $script:profileRoot $script:templatePaths[$index]
         if (-not (Test-Path $templatePath)) { throw "Neither the private profile nor its template exists: $profilePath" }
         Copy-Item -LiteralPath $templatePath -Destination $profilePath
-        Write-Log "Created private profile from template: $($script:profilePaths[$index]). Fill host metadata before scored studies."
+        Write-Log "Created private profile from template: $profilePath. Fill host metadata before scored studies."
     }
     $profile = Get-Content $profilePath -Raw | ConvertFrom-Json
     return [pscustomobject]@{ Index = $index; Name = $script:modelNames[$index]; Path = $profilePath; Profile = $profile }
+}
+
+function Update-ThroughputStatus {
+    try {
+        $selected = Get-SelectedModel
+        if (-not (Test-Path $script:freezePath)) {
+            $throughputStatus.Text = 'Output throughput: unavailable; selected freeze is missing'
+            return
+        }
+        $freezeHash = (Get-FileHash -LiteralPath $script:freezePath -Algorithm SHA256).Hash
+        $latest = $null
+        $attempts = Get-ChildItem (Join-Path $script:artifactRoot 'attempt-*') -Directory -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending
+        foreach ($attempt in $attempts) {
+            $resultPath = Join-Path $attempt.FullName 'result.json'
+            $attemptFreezePath = Join-Path $attempt.FullName 'freeze.json'
+            if (-not (Test-Path $resultPath) -or -not (Test-Path $attemptFreezePath)) { continue }
+            if ((Get-FileHash -LiteralPath $attemptFreezePath -Algorithm SHA256).Hash -ne $freezeHash) { continue }
+            $result = Get-Content -LiteralPath $resultPath -Raw | ConvertFrom-Json
+            if ($result.provider -eq $selected.Profile.provider -and $result.model -eq $selected.Profile.model -and -not $result.mock) {
+                $latest = $result
+                break
+            }
+        }
+        if (-not $latest) {
+            $throughputStatus.Text = 'Output throughput: n/a (no attempt for this model and freeze)'
+            return
+        }
+        $rate = $latest.completed_request_output_tokens_per_second
+        if ($null -eq $rate) {
+            $throughputStatus.Text = "Output throughput: n/a (provider usage unavailable for $($latest.attempt_id))"
+            return
+        }
+        $throughputStatus.Text = ('Output throughput: {0:N1} tokens/s (latest matching attempt)' -f [double]$rate)
+    }
+    catch {
+        $throughputStatus.Text = 'Output throughput: unavailable'
+    }
 }
 
 function Test-Port8000 {
@@ -212,6 +331,7 @@ function Read-WatchedFiles {
 
 function Update-Status {
     $selected = Get-SelectedModel
+    $apiKeyButton.Enabled = $selected.Profile.provider -eq 'openai' -and -not $script:taskProcess
     if ($selected.Profile.provider -eq 'openai') {
         if ([string]::IsNullOrWhiteSpace($env:OPENAI_API_KEY)) {
             $apiStatus.Text = 'OpenAI API key: missing in this process'
@@ -367,14 +487,15 @@ $runButton.Add_Click({
         if ($selected.Profile.provider -eq 'local' -and -not ($script:serverReady -or $script:warmupReady)) { throw 'Start the selected local server and pass Test connection first.' }
         if ($selected.Profile.provider -eq 'openai' -and [string]::IsNullOrWhiteSpace($env:OPENAI_API_KEY)) { throw 'OPENAI_API_KEY is not set in the PowerShell process that launched this controller.' }
         if ($selected.Profile.provider -eq 'openai') {
-            $confirm = [System.Windows.Forms.MessageBox]::Show('This runs an unscored pilot for up to 10 minutes. OpenAI usage is billable; the work deadline is not a dollar cap. Continue?', 'Billable OpenAI pilot', 'YesNo', 'Warning')
+            $confirm = [System.Windows.Forms.MessageBox]::Show("This runs an unscored pilot for up to $($script:deadlineSeconds) seconds. OpenAI usage is billable; the work deadline is not a dollar cap. Continue?", 'Billable OpenAI pilot', 'YesNo', 'Warning')
             if ($confirm -ne 'Yes') { return }
         }
-        $args = @('bench.py', 'run', '--profile', $selected.Path, '--freeze', $script:freezePath)
+        $args = @($script:benchScript, 'run', '--profile', $selected.Path, '--freeze', $script:freezePath)
         if ($selected.Profile.provider -eq 'openai') { $args += '--allow-cloud' }
         $quoted = foreach ($arg in $args) { if ($arg -match '\s') { '"' + $arg.Replace('"', '\"') + '"' } else { $arg } }
         $script:taskProcess = Start-TrackedProcess $script:runnerPython ($quoted -join ' ') $script:workflowRoot 'pilot'
         Write-Log "Started unscored pilot for $($selected.Name) on freeze $(Split-Path -Leaf $script:freezePath)."
+        $throughputStatus.Text = 'Output throughput: waiting for completed attempt'
     }
     catch { [System.Windows.Forms.MessageBox]::Show($_.Exception.Message, 'Could not start pilot', 'OK', 'Warning') | Out-Null }
     Update-Status
@@ -386,9 +507,11 @@ $openButton.Add_Click({
     else { Write-Log 'No attempt artifacts found yet.' }
 })
 
+$apiKeyButton.Add_Click({ Show-OpenAIKeyDialog })
+
 $reportButton.Add_Click({
     if ($script:taskProcess -and -not $script:taskProcess.HasExited) { Write-Log 'Wait for the active attempt to finish before refreshing the report.'; return }
-    $quoted = @('bench.py', 'report') | ForEach-Object { '"' + $_ + '"' }
+    $quoted = @($script:benchScript, 'report') | ForEach-Object { '"' + $_ + '"' }
     $script:taskProcess = Start-TrackedProcess $script:runnerPython ($quoted -join ' ') $script:workflowRoot 'report'
     Write-Log 'Refreshing the grouped attempt report...'
     Update-Status
@@ -397,8 +520,8 @@ $reportButton.Add_Click({
 $comparisonButton.Add_Click({
     if ($script:taskProcess -and -not $script:taskProcess.HasExited) { Write-Log 'Wait for the active task to finish before generating the comparison.'; return }
     $reportPath = Join-Path $script:artifactRoot ('comparison-report-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '.md')
-    $args = @('comparison_report.py', '--directory', $script:artifactRoot, '--freeze', $script:freezePath, '--output', $reportPath)
-    foreach ($profilePath in $script:profilePaths) { $args += @('--profile', (Join-Path $script:workflowRoot $profilePath)) }
+    $args = @($script:reportScript, '--directory', $script:artifactRoot, '--freeze', $script:freezePath, '--output', $reportPath, '--title', $script:reportTitle)
+    foreach ($profilePath in $script:profilePaths) { $args += @('--profile', (Join-Path $script:profileRoot $profilePath)) }
     $quoted = foreach ($arg in $args) { if ($arg -match '\s') { '"' + $arg.Replace('"', '\"') + '"' } else { $arg } }
     $script:openReportPath = $reportPath
     $script:taskProcess = Start-TrackedProcess $script:runnerPython ($quoted -join ' ') $script:workflowRoot 'comparison-report'
@@ -409,6 +532,7 @@ $comparisonButton.Add_Click({
 $modelPicker.Add_SelectedIndexChanged({
     $script:warmupReady = $false
     Update-Status
+    Update-ThroughputStatus
 })
 
 $timer = New-Object System.Windows.Forms.Timer
@@ -435,6 +559,7 @@ $timer.Add_Tick({
             }
             else { Write-Log 'Comparison report generation failed; inspect the process output above.' }
         }
+        Update-ThroughputStatus
     }
     Update-Status
 })
@@ -448,10 +573,11 @@ $form.Add_FormClosing({
     $timer.Stop()
 })
 
-Write-Log 'Choose a model. Start a local server when needed, test the endpoint, then run an unscored pilot.'
+Write-Log "Choose a model for $Workflow. Start a local server when needed, test the endpoint, then run an unscored pilot."
 Write-Log "Freeze: $script:freezePath"
 if (-not (Test-Path $script:runnerPython)) { Write-Log "Runner Python is missing: $script:runnerPython" }
 if (-not (Test-Path $script:freezePath)) { Write-Log "Freeze is missing: $script:freezePath" }
 Update-Status
+Update-ThroughputStatus
 $timer.Start()
 [void]$form.ShowDialog()

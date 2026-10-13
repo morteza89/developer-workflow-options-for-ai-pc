@@ -639,7 +639,7 @@ def report(directory):
 def main(package_root=None):
     if package_root is not None:
         configure_package(package_root)
-    default_freeze = ROOT / "artifacts" / WORKFLOW.get("default_freeze", "freeze-600s-v8.json")
+    default_freeze = ROOT / "artifacts" / WORKFLOW.get("default_freeze", "freeze-600s-v9.json")
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
     freeze = commands.add_parser("freeze")

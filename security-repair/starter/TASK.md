@@ -10,7 +10,7 @@ Editable files: `jwt/algorithms.py`, `jwt/utils.py`, and `tests/test_generated.p
 
 ## Required behavior
 
-- Reject asymmetric PEM and OpenSSH key material when used as an HMAC secret, including Ed25519 and ECDSA public-key encodings that the vulnerable implementation accepts.
+- Reject asymmetric PEM and OpenSSH key material when used as an HMAC secret: public and private PEM keys, PEM certificates, legacy PKCS#1 RSA public keys, and RSA, Ed25519, and ECDSA OpenSSH public keys. The visible tests exercise these formats.
 - Reject the forged HS256 token demonstrated by `python reproducer.py` and the visible test. Raising `jwt.InvalidKeyError` while preparing the HMAC key is the intended rejection.
 - Preserve normal HS256 use with an ordinary symmetric secret.
 - Preserve valid RSA, ECDSA, and EdDSA signing and verification.
@@ -21,4 +21,4 @@ Do not reject every key, disable signature verification, change the accepted-alg
 
 ## Environment
 
-The container is prepared and offline. Run `python -m pytest -q -p no:cacheprovider` and `python reproducer.py`. Do not install packages or access the network. You have 240 seconds for model calls, edits, visible tests, and repairs. Keep each action short and complete. At the deadline, captured files are evaluated as-is; no protected feedback is returned for another repair round.
+The container is prepared and offline. Run `python -m pytest -q -p no:cacheprovider` and `python reproducer.py`. Do not install packages or access the network. You have 600 seconds for model calls, edits, visible tests, and repairs. Keep each action short and complete. At the deadline, captured files are evaluated as-is; no protected feedback is returned for another repair round.
