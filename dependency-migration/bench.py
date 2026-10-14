@@ -481,7 +481,10 @@ def _run_attempt(profile, frozen, scored, mock=False):
     prepared = output / "prepared"
     shutil.copytree(ROOT / "starter", prepared, ignore=shutil.ignore_patterns("__pycache__", ".pytest_cache"))
     if mock and profile.get("seed_reference"):
+        excluded = set(profile.get("seed_excludes", ()))
         for relative in ALLOWED:
+            if relative in excluded:
+                continue
             source = ROOT / "reference" / relative
             if not source.is_file():
                 raise FileNotFoundError(f"Smoke reference file is missing: {relative}")
@@ -677,7 +680,7 @@ def main(package_root=None):
         commands = ["cat TASK.md"]
         if not args.deadline_probe:
             commands += ["python -m pytest -q -p no:cacheprovider", "printf 'COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT\\nsmoke\\n'"]
-        profile = {"label": "offline-deadline-probe" if args.deadline_probe else "offline-harness-smoke", "provider": "mock", "model": "offline-mock", "mock_commands": commands, "mock_wait_after_commands": args.deadline_probe, "seed_reference": not args.deadline_probe}
+        profile = {"label": "offline-deadline-probe" if args.deadline_probe else "offline-harness-smoke", "provider": "mock", "model": "offline-mock", "mock_commands": commands, "mock_wait_after_commands": args.deadline_probe, "seed_reference": True, "seed_excludes": [WORKFLOW.get("generated_test_path", "tests/test_generated.py")] if args.deadline_probe else []}
         return run_attempt(profile, load(args.freeze), False, mock=True)
     return 0
 

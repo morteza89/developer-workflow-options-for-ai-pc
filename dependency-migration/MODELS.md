@@ -128,7 +128,7 @@ Set-Location C:\projects\Developer_Workflow_Options_for_AI_PC
 
 OVMS `2026.4.0.869b2186` with OpenVINO/GenAI 2026.4 loaded this export and reached `AVAILABLE` in about 38 seconds. `/v3/chat/completions` returned chat content and a valid native tool call under model ID `qwen3.8-27b-ov`. The benchmark uses the same text-action agent loop as the other models, not that native tool API, and requests non-thinking output. The v8 PTL pilot was accepted (39/39 contract/native checks and 12/12 generated tests) in 432.99 seconds; this is one unscored result, not qualification. [The private profile](profiles/ptl-morteza89-27b.private.json) records this machine and configuration but still requires qualification evidence.
 
-Use a separate clean PowerShell for the benchmark and the current 600-second freeze. The v8 27B pilot was accepted once; repeated attempts and independent GPU/memory qualification remain pending. Earlier 240-second runs are historical. Before a new attempt, confirm the previous OVMS request has ended; restart the server manually if it remains busy after cancelling the client. Prefix caching differs between 27B and 8B and must be disclosed.
+Use a separate clean PowerShell for the benchmark and the current 600-second freeze. No 600-second pilot has been run for this workflow yet; the earlier 240-second runs are historical and the previously cited v8 27B acceptance has no saved attempt record. Repeated attempts and independent GPU/memory qualification remain pending. Before a new attempt, confirm the previous OVMS request has ended; restart the server manually if it remains busy after cancelling the client. Prefix caching differs between 27B and 8B and must be disclosed.
 
 ## Candidates
 

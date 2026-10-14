@@ -1,0 +1,28 @@
+{
+  "created_at": "2026-10-13T22:54:38.588307+00:00",
+  "image": "sha256:183e551061789725ec9bcace0cf1bffcce501f1ea1f7ac0071afb845223947fc",
+  "hashes": {
+    "bench.py": "9b189a091f793ab67cf3bf58f85a28c9a9fc073e3fe32e21f77cb1a8b5175678",
+    "Dockerfile": "96e4d2d39a407bed7f9aeedab444398dd429b3481f1c3e8cb682b0f6b61a69b8",
+    "grader/test_contract.py": "497e3575231eb204dcb40c5eac7ab71b9dc82c19ec31d86847a4214bb32f3665",
+    "grader/test_native.py": "e72f9853833f398723ca3fe9b9d08d30a96834b2ab8d272af5f22e24cff16a90",
+    "policy.json": "201856a8206dc27b564d4be9afa95eab7d0fbffa6ff0acde1d21d1d6e6f64ad0",
+    "qualify.py": "32aaae2e4a3ed4e7e9125659e221edef038221b90840d838fe593b9f86ce090f",
+    "reference/app/routes.py": "cb38dfceff5b31c3c31819f471fde2dc69e772e7c815e9318760c6464e5a5bd2",
+    "reference/app/schemas.py": "e29afbd2ef1d5bc97be95d8ac2ec88bba1b944a986656eb4c0311a983aeca054",
+    "reference/app/settings.py": "e0ee652c7baea5ffd04ddeb582a42bf26fb9a7319c81d9652b9729d8269881e4",
+    "reference/tests/test_generated.py": "7de28586b006b2fcc735aecef36eda06e8d20b74b869c059187421b135fd0e0e",
+    "requirements-runner.lock": "e7e868a2f593774dfaf669227d35c12db6e33135d84656c2310715794029ea5f",
+    "requirements-v1.lock": "6aae1cf7faf67d237b7c968f84e22b352c44639e52b155be251de5ed0c5c239e",
+    "requirements-v2.lock": "420f1a68228459f55355a5b2eecebf3474edc206d70e88c90378b3a0c568796f",
+    "starter/app/routes.py": "9606b800d5bc1abe865da21d0bca7741928009642876126b69870266bd4302cb",
+    "starter/app/schemas.py": "0ea89552ac0113f311fe11ddb9a2befabe6257d0250c0387f5f92c50aa8d106d",
+    "starter/app/settings.py": "b4dc6b6cda5fc7a1a9d1829bb1709fca29d0cc87aa25f69b7ea2336d8da9064f",
+    "starter/MIGRATION.md": "d2a2bf1fe5adec444965301870356275ed1fdd7ee0f42a8d10c253a9ccb37628",
+    "starter/TASK.md": "88de663c62ff28d85f6b96e26dd142eb037df5e67ec6a7114815f99dd1f81cfa",
+    "starter/tests/test_generated.py": "e38a4b8a8b68592f10ba2ca3f0ba175a2349f8d4daa43a95c898e564e1af587e",
+    "starter/tests/test_visible.py": "4668d6eca3eeb99b9bf31ac6e3b4a3c7e14b9ee10dd6ee7d4f285d9d45f66cea",
+    "worker.py": "d4330c262d33093aa5ac25b55e9709b9deaf1d48fedda9797bf05659f7502656"
+  },
+  "python": "3.11.9 (tags/v3.11.9:de54cf5, Apr  2 2024, 10:12:12) [MSC v.1938 64 bit (AMD64)]"
+}

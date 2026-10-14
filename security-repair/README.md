@@ -6,7 +6,17 @@ The verifier rejects PEM and OpenSSH asymmetric key material used as an HMAC sec
 
 ## Status
 
-Offline qualification passed on Docker image `pyjwt-security:0.1`: the vulnerable source failed the injected regression tests; the upstream reference passed the contract, generated tests, and baseline-negative control; four deliberately defective repairs were rejected. Under v5 at 240 seconds, 27B timed out after 7/8 protected checks with no generated assertions; 8B submitted after 52 seconds with 4/8 checks and no generated assertions. OpenAI passed 8/8 protected and 31/31 generated tests in 119 seconds. Under v7 at 600 seconds, 27B used 579 seconds, passed 6/8 protected checks and 7/7 generated tests, but missed RSA PEM/certificate and legacy PKCS#1 checks. The visible test now exercises those formats; v8 is the new 600-second comparison freeze. Results are unscored pilots, not qualification or acceptance claims.
+Offline qualification passed on Docker image `pyjwt-security:0.1`: the vulnerable source failed the injected regression tests; the upstream reference passed the contract, generated tests, and baseline-negative control; four deliberately defective repairs were rejected. Requalified 13 October 2026 on image `sha256:72caa5f6…`.
+
+Saved model pilots (all on `freeze-240s-pyjwt-v4.json`, 240-second budget, unscored):
+
+| Configuration | Attempt | Result | Submission / through verification | Protected checks | Generated tests | Estimated fee |
+|---|---|---|---:|---:|---:|---:|
+| Qwen3.8 27B INT4 | `attempt-ef5239ae2d41462b83eec8a1370805ef` | deadline | 240.00 s / 244.54 s | 6/8 | 0 | $0.00 |
+| Qwen3 8B INT8 | `attempt-6e1ccf27008f4b79866663f9b64327ec` | submitted, rejected | 63.98 s / 68.47 s | 4/8 | 0 | $0.00 |
+| OpenAI GPT-6.1 Sol | `attempt-8f5f4c5f19064cc8a4ddb00fe8dc7bee` | accepted | 104.58 s / 108.45 s | 8/8 | 27/27 | $0.0762 estimated |
+
+Freezes `v5`–`v8` record Docker image `sha256:0cd2054e…` and an engine `requirements-runner.lock` hash that no file in this repository now reproduces, so they cannot be used on this host; the GUI run that attempted `v8` failed with `docker image inspect` returning no such image. They are retained unchanged as history. `freeze-600s-pyjwt-v9.json` is the current 600-second comparison freeze, created from the present package and the present image. No 600-second model pilot has been run for this workflow yet. Results above are unscored pilots, not qualification or acceptance claims.
 
 ## Setup and Checks
 

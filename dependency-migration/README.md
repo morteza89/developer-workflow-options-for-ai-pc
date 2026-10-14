@@ -11,7 +11,7 @@ This is an implemented, resettable benchmark package, **not a hardware-qualified
 
 The model gets **600 seconds (10 minutes) of work**, including inference, editing, visible tests and repairs. At the deadline, earlier submission or worker exit, the parent pauses the task, stops the worker and evaluates the saved files. Evaluation runs outside the work budget and includes partial progress. Protected feedback is not returned for another repair round. There is no separate shorter success cutoff or target range; all three models receive the same budget.
 
-The 8B INT8 and the article's distinct Morteza89 27B INT4 endpoints both serve requests; the 27B also passed native tool-call parsing. Under the 600-second policy, the PTL 27B pilot was accepted; the 8B pilot submitted unchanged starter code and was rejected. The first OpenAI GPT-6.1 Sol attempt exposed two adapter issues, now fixed. Its v8 pilot was accepted in 42.66 seconds with 39/39 contract/native checks, 27/27 generated tests, and an estimated $0.03283 API fee. One response had four command blocks; only the first was run, as required by the agent protocol. These are initial pilots, not qualification or a statistical comparison. Check the provider usage dashboard for actual billing. See [MODELS.md](MODELS.md) for setup.
+The 8B INT8 and the article's distinct Morteza89 27B INT4 endpoints both serve requests; the 27B also passed native tool-call parsing. The OpenAI adapter issues found in the first GPT-6.1 Sol attempts are fixed in `worker.py`. **No model pilot for this workflow has been run under the 600-second policy on this host:** the newest saved attempt is the 240-second `freeze-240s-v3` smoke of 9 October 2026, and the `v5`-`v8` attempt records previously cited here are not present in `artifacts/`. Rerun the three configurations on `freeze-600s-v9.json` before quoting any comparison. See [MODELS.md](MODELS.md) for setup.
 
 ### Current Host Checkpoint
 
@@ -136,17 +136,9 @@ For the running article export use [profiles/ptl-morteza89-27b.private.json](pro
 
 For the current PTL comparison, use local Qwen3-8B INT8, local Morteza89 Qwen3.8-27B INT4, and one pinned OpenAI API model (`gpt-6.1-sol`). All receive the same frozen task, 600-second work budget, agent permissions and post-work checks. The OpenAI run uses the Responses API with medium reasoning effort; temperature is not sent. The adapter converts the agent transcript to Responses-compatible `role`/`content` messages, strips unsupported Chat Completions fields such as `tool_calls`, and if the model returns multiple action blocks it logs the raw response and sends only the first command to the agent. Record these provider-specific compatibility behaviors in comparisons. Run only one local server at a time. Claude remains a separately supported provider and its results must not be grouped with OpenAI.
 
-### Initial PTL Results (v8)
+### Initial PTL Results
 
-| Configuration | Result | Handoff / through verification | Contract/native | Generated tests | Calls; tokens | Estimated API fee |
-|---|---|---:|---:|---:|---|---:|
-| Qwen3.8 27B INT4 | Accepted | 432.99 s / 436.13 s | 39/39 | 12/12 | 15; 69,949 input, 3,067 output | $0.00 |
-| Qwen3 8B INT8 | Rejected; submitted unchanged starter | 8.76 s / 11.40 s | Collection error (2 errors; no contract checks ran) | 0 | 4; 4,792 input, 80 output | $0.00 |
-| OpenAI GPT-6.1 Sol | Accepted | 42.66 s / 45.77 s | 39/39 | 27/27 | 4; 12,499 input, 2,211 output | $0.032829 estimated |
-
-Attempt records: [27B](artifacts/attempt-8b0e51f33b8a4a3186be8f05810ee109/result.json), [8B](artifacts/attempt-20eb2a59ba3644b9b72e3037baa6d5ba/result.json), [OpenAI](artifacts/attempt-59734f17f8ec44399f369e8401fc0064/result.json). All three use task hash `58678ca6f07db6309a3d12f53a6c5743f82d4e5ae9df6e17d1eb41a3169f3762` and image `sha256:74283564a52c5969dec0355e2d0fa1f297110fd8be55f0b6d497650a627315a5`.
-
-These are single unscored pilots, not qualification or statistical evidence. Output rates are not directly comparable across tokenizers. The OpenAI adapter discarded three extra action blocks from one response and ran only the first; disclose this provider-specific normalization. The saved 8B v8 attempt captured the profile before its host metadata was corrected; the current private profile is now corrected, but that immutable attempt record still has the old profile snapshot.
+None yet under this policy. The `v8` comparison table that previously stood here cited `attempt-8b0e51f33b8a4a3186be8f05810ee109`, `attempt-20eb2a59ba3644b9b72e3037baa6d5ba` and `attempt-59734f17f8ec44399f369e8401fc0064`, task hash `58678ca6…` and image `sha256:74283564…`. None of those attempt directories exist in `artifacts/`, and that image is not present in the local Docker daemon, so the numbers could not be reproduced or audited and were removed. Saved attempts for this workflow stop at 9 October 2026 under the 240-second `freeze-240s-v3` package; see [VALIDATION.md](VALIDATION.md).
 
 Compare full acceptance, named partial results, and early completion time. Do not resize the task for a model or discard partial/failed attempts. Following the proposal, run five supervised unscored pilot attempts per configuration and review their saved files/results and profile evidence. If the configurations qualify, run the same predeclared number of scored attempts for all three; the initial plan is five additional scored attempts each. Every attempt starts from a fresh task. Submission ends work early even if later protected evaluation fails; there is no protected repair loop under this policy.
 

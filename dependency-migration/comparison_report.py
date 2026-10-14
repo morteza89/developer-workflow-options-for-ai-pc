@@ -93,6 +93,9 @@ def render_report(directory, frozen, profile_paths=DEFAULT_PROFILES, title="Depe
         "| --- | --- | --- | ---: | ---: | --- |",
     ]
     for profile_path in profile_paths:
+        if not Path(profile_path).is_file():
+            lines.append(f"| {cell(Path(profile_path).stem)} | not configured | not configured | 0 | 0 | PROFILE MISSING |")
+            continue
         profile = read_json(profile_path)
         count = sum(
             attempt.get("provider") == profile.get("provider")
