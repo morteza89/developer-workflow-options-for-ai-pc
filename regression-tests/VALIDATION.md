@@ -1,5 +1,9 @@
 # Validation Evidence
 
+## 720-Second Follow-Up
+
+The user requested a 720-second 27B follow-up on 20 October 2026. The policy is versioned as `requests-url-regression-0.2-720`, with both work and request timeouts at 720 seconds and default freeze `freeze-720s-requests-v2.json`. Only timing and its matching text/metadata change; the response-token limit, model profile, immutable production, generated-test scope, reference, grader, and eight faults remain unchanged. The controller derives its displayed duration from each workflow's policy; the other two workflows remain at 600 seconds. The 90-test runner suite passed after this integration. New smoke and pilot outcomes are recorded under their unique attempt IDs, not inferred from the historical results below. A 720-second cutoff probe has not been run as part of this duration-only follow-up.
+
 The task package, shared isolated verifier, Windows controller registration, comparison reporting, and cross-laptop setup documentation are integrated. Historical stage evidence below is retained separately from the final Docker qualification.
 
 ## Executed

@@ -63,8 +63,8 @@ def validate_package():
     if "workflow.json" not in hashes:
         raise RuntimeError("Fault definitions must be included in package hashes")
     policy = engine.load(ROOT / "policy.json")
-    if policy["deadline_seconds"] != 600 or policy["request_timeout_seconds"] != 600:
-        raise RuntimeError("Expected the shared 600-second loop")
+    if policy["deadline_seconds"] != 720 or policy["request_timeout_seconds"] != 720:
+        raise RuntimeError("Expected the shared 720-second loop")
     return faults, policy
 
 

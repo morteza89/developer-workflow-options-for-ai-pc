@@ -8,7 +8,7 @@ The generated suite must pass on clean production and detect eight frozen, reach
 
 Implemented task package with pinned source, hashed dependency lock, visible examples, 25 human reference cases, eight independent protected fault witnesses, and eleven invalid-submission controls. Docker qualification `qualification-check-f21daa4a67f2` passed the reference, all eight faults, independent Docker witnesses, and all eleven invalid controls. The shared runner suite passes 84 tests. See [VALIDATION.md](VALIDATION.md).
 
-Shared-engine fault phases, production-replacement protection, and controller registration are integrated. The initial freeze name is `freeze-600s-requests-v1.json`; saved `artifacts/attempt-*/result.json` records are the authority for accepted smoke and 600-second deadline-probe outcomes. These offline attempts are not model/profile performance or hardware qualification.
+Shared-engine fault phases, production-replacement protection, and controller registration are integrated. The current user-selected experiment uses **720 seconds (12 minutes)** and `freeze-720s-requests-v2.json`. It changes only the time budget and matching metadata/text, not the task, model profile, output-token limit, or acceptance rules. The original `freeze-600s-requests-v1.json`, accepted smoke, real 600-second deadline probe, and model attempts remain historical and must not be pooled with the longer-budget results. Saved `artifacts/attempt-*/result.json` records are the authority for runtime outcomes.
 
 ## Setup
 
@@ -44,18 +44,18 @@ uv pip sync --require-hashes --python $TaskPython .\regression-tests\requirement
 For a newly authored package, after successful isolated qualification, create a new freeze and run both smoke gates. To join an existing comparison, transfer its exact image, source bytes, runner build, and freeze instead of creating a laptop-specific replacement; see the repository's cross-laptop guide. Skip freeze creation when that selected file already exists:
 
 ```powershell
-$Freeze = '.\regression-tests\artifacts\freeze-600s-requests-v1.json'
+$Freeze = '.\regression-tests\artifacts\freeze-720s-requests-v2.json'
 & $Runner .\regression-tests\bench.py freeze --image requests-regression:0.1 --output $Freeze
 & $Runner .\regression-tests\bench.py smoke --freeze $Freeze
 & $Runner .\regression-tests\bench.py smoke --freeze $Freeze --deadline-probe
 & $Runner .\regression-tests\bench.py report --directory .\regression-tests\artifacts
 ```
 
-The default freeze is `regression-tests/artifacts/freeze-600s-requests-v1.json`. It binds the task, source, reference, grader, policy, workflow/fault definitions, task dependencies, shared engine, and image. A freeze is not model qualification. Do not overwrite an existing freeze; use a new explicit `--output` and pass the corresponding `--freeze` to subsequent commands after package changes. Smoke must seed only the allowed generated file from the reference, never replace immutable production. Require an accepted smoke for the exact freeze before model runs. A deadline probe (`bench.py smoke --deadline-probe`) uses the same 600-second budget and is not an accepted-task smoke.
+The default freeze is `regression-tests/artifacts/freeze-720s-requests-v2.json`. It binds the task, source, reference, grader, policy, workflow/fault definitions, task dependencies, shared engine, and image. A freeze is not model qualification. Do not overwrite an existing freeze; use a new explicit `--output` and pass the corresponding `--freeze` to subsequent commands after package changes. Smoke must seed only the allowed generated file from the reference, never replace immutable production. Require an accepted smoke for the exact freeze before model runs. A deadline probe (`bench.py smoke --deadline-probe`) uses the same 720-second budget and is not an accepted-task smoke.
 
 ## Model Runs and Controller
 
-After the gates above, double-click [Run-Demo.cmd](Run-Demo.cmd). It invokes the registered shared controller with `-Workflow regression-tests`. Reuse existing local 27B, local 8B, and OpenAI profiles without changing their identities or qualification claims. The shared shell-action loop, 2048-token action limit, time accounting, and 600-second deadline apply equally to all models. Submission can end early; a timeout preserves partial work for independent evaluation.
+After the gates above, double-click [Run-Demo.cmd](Run-Demo.cmd). Reopen an already-running controller after changing the policy. It invokes the registered shared controller with `-Workflow regression-tests` and reads the policy's budget for its label and confirmation. Reuse existing local 27B, local 8B, and OpenAI profiles without changing their identities or qualification claims. The shared shell-action loop, 2048-token action limit, time accounting, and 720-second deadline apply equally to all models in this new experiment. Submission can end early; a timeout preserves partial work for independent evaluation.
 
 In the controller, select the model, start a local server if needed, test the connection, and run an unscored pilot. Enter cloud keys only in the controller's masked prompt, never in a profile, task file, command line, or chat. Cloud runs need explicit billable-run confirmation. Use the controller's latest-attempt and report controls to inspect the saved evidence. GUI runs must not silently build images or replace missing/stale freezes.
 
@@ -65,7 +65,7 @@ CLI equivalents (replace the example profile path with an existing configured pr
 & $Runner .\regression-tests\bench.py run --freeze $Freeze --profile .\dependency-migration\profiles\YOUR-LOCAL-PROFILE.private.json
 & $Runner .\regression-tests\bench.py run --freeze $Freeze --profile .\dependency-migration\profiles\YOUR-OPENAI-PROFILE.private.json --allow-cloud
 & $Runner .\regression-tests\bench.py report --directory .\regression-tests\artifacts
-& $Runner .\dependency-migration\comparison_report.py --directory .\regression-tests\artifacts --freeze $Freeze --output .\regression-tests\artifacts\comparison-report-requests-v1.md --title 'Requests Regression Tests Comparison'
+& $Runner .\dependency-migration\comparison_report.py --directory .\regression-tests\artifacts --freeze $Freeze --output .\regression-tests\artifacts\comparison-report-requests-v2.md --title 'Requests Regression Tests Comparison (720 seconds)'
 ```
 
 The shared controller also provides **Generate comparison report**; the CLI `report` summarizes this task's attempt categories, checks, named test results, timing, and usage. The comparison command selects task artifacts with `--directory` and binds them to `--freeze`. Do not mix different freezes or call unqualified pilots scored runs. Scored runs require a separately qualified model/profile and the engine's `--scored` gates.

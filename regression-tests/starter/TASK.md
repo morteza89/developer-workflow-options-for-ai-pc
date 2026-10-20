@@ -12,4 +12,4 @@ Import the real functions from `requests.utils` (direct imports or module-qualif
 
 Use deterministic offline inputs. No HTTP requests are necessary. Include complementary ordinary cases so tests reject broken behavior without rejecting this correct snapshot. Independent evaluation runs your generated file against clean source and eight isolated behavior-changing faults. Each fault must cause an ordinary assertion failure in your suite; errors, skips, and xfail do not count. Visible tests are examples, not your submission.
 
-Run `python -m pytest tests/test_visible.py tests/test_generated.py -q -p no:cacheprovider --import-mode=importlib --noconftest`. Submit within the common 600-second work budget.
+Run `python -m pytest tests/test_visible.py tests/test_generated.py -q -p no:cacheprovider --import-mode=importlib --noconftest`. Submit within the common 720-second work budget.

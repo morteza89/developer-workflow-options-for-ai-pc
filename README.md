@@ -1,6 +1,6 @@
 # AI PC Developer Workflows
 
-**To reproduce the working local model on another laptop:** follow [the Windows 27B replication guide](dependency-migration/MODELS.md#replicate-on-another-windows-laptop), then the [benchmark setup guide](dependency-migration/README.md). The current comparison policy uses a 600-second (10-minute) work budget and a fresh `freeze-600s-v9.json` package; older freezes and results remain historical.
+**To reproduce the working local model on another laptop:** follow [the Windows 27B replication guide](dependency-migration/MODELS.md#replicate-on-another-windows-laptop), then the relevant workflow's setup guide. Dependency Migration and Security Repair use 600 seconds (10 minutes); Regression Tests uses 720 seconds (12 minutes). Keep each workflow's selected freeze and historical results separate.
 
 Start with [Dependency Migration](dependency-migration/README.md) for the current local-model pilot and its 600-second policy. Option 3, [Security Repair](security-repair/README.md), is a separate PyJWT backport task, offline-qualified and now using a shared 600-second budget. Earlier 240-second pilots show OpenAI accepted, 27B timed out near completion, and 8B submitted incomplete; these need same-freeze 600-second reruns and are not scored results.
 
@@ -8,9 +8,25 @@ Start with [Dependency Migration](dependency-migration/README.md) for the curren
 |---|---|---|
 | [dependency-migration](dependency-migration/README.md) | Migrate a small expense service from Pydantic v1 to native v2 | Implemented; 600-second PTL pilots: 27B and OpenAI accepted, 8B rejected; repeated qualification runs pending |
 | [security-repair](security-repair/README.md) | PyJWT security backport | Offline-qualified; 600-second policy; comparable local-model reruns pending |
-| [regression-tests](regression-tests/README.md) | Requests URL regression tests | Implemented with a 600-second budget; Docker reference and fault qualification passed; model pilots pending |
+| [regression-tests](regression-tests/README.md) | Requests URL regression tests | Retained 720-second policy; two accepted 27B pilots; 8B pilot rejected; 600-second results historical |
 
-The [handoff](AI_PC_WORKFLOW_HANDOFF.md) documents the proposal. All three implemented workflows use 600 seconds; evaluation/setup/cleanup are outside each work budget, and historical attempt records and freezes retain their original values. The Word proposal's older 240-second budget is superseded by the current user-selected 600 seconds. Infrastructure/API/context errors and manual cancellation remain possible.
+The [handoff](AI_PC_WORKFLOW_HANDOFF.md) documents the proposal. Dependency Migration and Security Repair use 600 seconds. The user retained 720 seconds for Regression Tests on 20 October 2026 after successful 27B pilots. Its original 600-second results remain historical and are not pooled with the longer-budget experiment. Evaluation/setup/cleanup are outside each work budget. Infrastructure/API/context errors and manual cancellation remain possible.
+
+## Regression Tests: Retained Budget
+
+Use **720 seconds for every model** in the current Regression Tests comparison, including local 27B, local 8B, and cloud profiles. The selected package remains [freeze-720s-requests-v2.json](regression-tests/artifacts/freeze-720s-requests-v2.json). The task, eight fault checks, 2048-token response limit, model profiles, and Docker image are unchanged from the duration-only follow-up. Early submission ends work; independent verification follows outside the work budget. The other two workflows remain at 600 seconds.
+
+Verified unscored results for this freeze:
+
+| Configuration | Attempt ID | Agent submission time | Generated tests | Faults detected | Accepted |
+| --- | --- | ---: | ---: | ---: | --- |
+| Qwen3.8 27B INT4 | `attempt-883ec4aa218c4746843c6b447fb0bb89` | 672.29 s | 27/27 | 8/8 | Yes |
+| Qwen3.8 27B INT4 | `attempt-becfea643ea04302a50ce062a7cc93e5` | 640.21 s | 27/27 | 8/8 | Yes |
+| Qwen3 8B INT8 | `attempt-8f9f263af5114fb7b2048ddf10159df3` | 54.86 s | 0/3 | 0/8 | No |
+
+These are pilots, not hardware qualification or a statistical reliability claim. Keep failures as well as successes. Attempt logs are machine-local runtime evidence; transfer complete attempt directories for independent review. Reopen the [Regression Tests controller](regression-tests/Run-Demo.cmd) after policy changes and confirm it shows a 12-minute budget.
+
+The package's own README and validation notes are freeze-bound and retain their wording from creation of v2, including its earlier "follow-up" description and historical test counts. This top-level decision record adopts that unchanged 720-second package for continued use; it does not alter or overwrite a freeze or imply that earlier 600-second attempts passed.
 
 ## Reproduce Across Laptops
 

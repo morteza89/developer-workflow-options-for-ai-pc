@@ -24,7 +24,7 @@ def test_regression_frozen_bytes_survive_clean_git_checkout(tmp_path, monkeypatc
     assert {name for name in original if name.startswith("engine/")} == {
         "engine/bench.py", "engine/worker.py", "engine/requirements-runner.lock",
     }
-    freeze = regression / "artifacts/freeze-600s-requests-v1.json"
+    freeze = regression / "artifacts" / bench.load(regression / "workflow.json")["default_freeze"]
     if freeze.is_file():
         assert original == bench.load(freeze)["hashes"]
 

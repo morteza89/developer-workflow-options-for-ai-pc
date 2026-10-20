@@ -1,6 +1,6 @@
 # Resume After Windows Restart
 
-Historical restart checkpoint only. It records the former 240-second policy and freeze; do not use it to start new attempts. Current setup/run instructions are in [the model guide](dependency-migration/MODELS.md) and [the migration README](dependency-migration/README.md). New attempts use the 600-second policy and a fresh `freeze-600s-v9.json` after its offline smoke passes. Historical status claims below are not current readiness evidence.
+Historical restart checkpoint only. It records the former 240-second policy and freeze; do not use it to start new attempts. Current setup/run instructions are in [the model guide](dependency-migration/MODELS.md) and each workflow's README. As retained by the user on 20 October 2026, Regression Tests uses **720 seconds (12 minutes)** and `freeze-720s-requests-v2.json`; Dependency Migration and Security Repair remain at 600 seconds. See the [current budget and pilot record](README.md#regression-tests-retained-budget) and [Regression Tests guide](regression-tests/README.md). Preserve selected freezes and require a matching accepted offline smoke; do not replace them merely because the laptop restarted. Historical status claims and sequencing restrictions below are not current readiness evidence.
 
 Checkpoint: 2026-10-05. Restarting Windows after WSL installation. Installation completion and post-reboot WSL status have not yet been verified.
 

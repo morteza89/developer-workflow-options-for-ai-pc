@@ -2,6 +2,8 @@
 
 Prepared for Morteza Heidari and Ajith, 5 October 2026.
 
+Current decision, 20 October 2026: Option 4 Regression Tests is implemented and retains a **720-second (12-minute)** agent-work budget for every model under `freeze-720s-requests-v2.json`. Two unscored 27B pilots submitted accepted suites in 672.29 and 640.21 seconds; each passed 27 generated tests and detected all eight faults. This is pilot evidence, not a reliability or hardware-qualification claim. Dependency Migration and Security Repair remain at 600 seconds. Earlier 240/600-second proposal text and results below are historical where they conflict with this decision. See the [current timing and result record](README.md#regression-tests-retained-budget) and [Regression Tests guide](regression-tests/README.md). Do not pool different budgets or freezes.
+
 Timing policy revised 13 October 2026: Dependency Migration and Option 3 Security Repair each use a 600-second (10-minute) agent-work budget per model, followed by independent evaluation of saved files, including partial work. Security Repair's earlier 240-second pilots remain historical: the 27B timed out at 7/8 protected checks, 8B submitted without valid generated assertions, and OpenAI passed. Current setup commands are in [dependency-migration/README.md](dependency-migration/README.md) and [security-repair/README.md](security-repair/README.md); the research/selection discussion below is background, not a current setup guide.
 
 ## Read this first

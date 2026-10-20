@@ -1,7 +1,7 @@
 {
-  "task_version": "requests-url-regression-0.1-600",
-  "deadline_seconds": 600,
-  "request_timeout_seconds": 600,
+  "task_version": "requests-url-regression-0.2-720",
+  "deadline_seconds": 720,
+  "request_timeout_seconds": 720,
   "step_limit": 0,
   "tool_timeout_seconds": 30,
   "verifier_timeout_seconds": 60,
