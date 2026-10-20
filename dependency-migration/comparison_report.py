@@ -11,6 +11,7 @@ DEFAULT_PROFILES = (
     "profiles/ptl-morteza89-27b.private.json",
     "profiles/ptl-8b.private.json",
     "profiles/ptl-openai.private.json",
+    "profiles/ptl-openai-astra.private.json",
 )
 
 

@@ -1,0 +1,51 @@
+{
+  "label": "ptl-openai-gpt-6-astra",
+  "provider": "openai",
+  "base_url": "https://api.openai.com/v1",
+  "api_key_env": "OPENAI_API_KEY",
+  "model": "gpt-6-astra",
+  "expected_returned_model": "gpt-6-astra",
+  "extra_body": {},
+  "qualified": false,
+  "host": {
+    "sku": "REQUIRED",
+    "ram_gb": null,
+    "os": "REQUIRED",
+    "driver": "REQUIRED",
+    "bios": "REQUIRED",
+    "power_mode": "REQUIRED"
+  },
+  "inference": {
+    "runtime": "OpenAI Responses API",
+    "runtime_sha256": "provider-managed",
+    "model_revision": "gpt-6-astra",
+    "export_sha256": "provider-managed",
+    "template_sha256": "provider-managed",
+    "device": "provider-managed",
+    "context_limit": null,
+    "reasoning_effort": "medium",
+    "cache_policy": "Automatic prompt caching; record returned cached and cache-write token usage",
+    "cold_start_seconds": null,
+    "peak_memory_gb": null,
+    "offload_evidence": "provider-managed",
+    "no_cloud_fallback_evidence": "single fixed OpenAI endpoint"
+  },
+  "rate_card": {
+    "source_url": "https://developers.openai.com/api/docs/pricing",
+    "saved_at": "2026-10-20",
+    "service_tier": "standard",
+    "long_context_threshold_tokens": 272000,
+    "short_context": {
+      "input_per_million": 10.0,
+      "cached_input_per_million": 1.0,
+      "cache_write_per_million": 12.5,
+      "output_per_million": 50.0
+    },
+    "long_context": {
+      "input_per_million": 20.0,
+      "cached_input_per_million": 2.0,
+      "cache_write_per_million": 25.0,
+      "output_per_million": 75.0
+    }
+  }
+}

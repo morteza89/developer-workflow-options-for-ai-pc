@@ -12,6 +12,56 @@ import comparison_report
 import qualify
 
 
+@pytest.mark.parametrize("workflow", ["dependency-migration", "security-repair", "regression-tests"])
+def test_astra_uses_existing_responses_adapter_and_workflow_budget(monkeypatch, workflow):
+    from worker import openai_response_options
+
+    profile = bench.load(bench.ENGINE_ROOT / "profiles/openai-astra.json")
+    policy = bench.load(bench.ENGINE_ROOT.parent / workflow / "policy.json")
+    monkeypatch.setenv("OPENAI_API_KEY", "test-only-not-a-credential")
+    bench.validate_profile(profile, False, True)
+    options = openai_response_options(profile, policy, [{"role": "system", "content": "task"}, {"role": "user", "content": "work"}])
+    assert options["model"] == profile["expected_returned_model"] == "gpt-6-astra"
+    assert options["reasoning"] == {"effort": "medium"}
+    assert options["timeout"] == policy["request_timeout_seconds"]
+    assert options["max_output_tokens"] == policy["max_output_tokens"] == 2048
+    assert profile["qualified"] is False
+    assert "profiles/ptl-openai-astra.private.json" in comparison_report.DEFAULT_PROFILES
+
+
+@pytest.mark.parametrize("input_tokens,input_rate,cache_rate,write_rate,output_rate", [
+    (272000, 10, 1, 12.5, 50),
+    (272001, 20, 2, 25, 75),
+])
+def test_astra_fee_uses_its_own_rates(input_tokens, input_rate, cache_rate, write_rate, output_rate):
+    profile = bench.load(bench.ENGINE_ROOT / "profiles/openai-astra.json")
+    events = [
+        {"kind": "request_start"},
+        {"kind": "request_end", "usage": {"input_tokens": input_tokens, "output_tokens": 20, "input_tokens_details": {"cached_tokens": 100, "cache_write_tokens": 400}}},
+    ]
+    expected = ((input_tokens - 500) * input_rate + 100 * cache_rate + 400 * write_rate + 20 * output_rate) / 1_000_000
+    assert bench.api_fee(profile, events) == pytest.approx(expected)
+    sol = bench.load(bench.ENGINE_ROOT / "profiles/openai.json")
+    assert bench.api_fee(profile, events) != bench.api_fee(sol, events)
+
+
+def test_comparison_keeps_astra_and_sol_separate(tmp_path):
+    frozen = {"created_at": "same-freeze"}
+    profiles = [bench.load(bench.ENGINE_ROOT / "profiles" / name) for name in ("openai.json", "openai-astra.json")]
+    for profile in profiles:
+        attempt = tmp_path / ("attempt-" + profile["model"])
+        attempt.mkdir()
+        bench.save(attempt / "freeze.json", frozen)
+        bench.save(attempt / "result.json", {
+            "attempt_id": attempt.name, "label": profile["label"], "provider": "openai",
+            "model": profile["model"], "task_hash": "same-task", "profile_hash": profile["model"],
+            "accepted": True, "mock": False, "category": "accepted",
+        })
+    report = comparison_report.render_report(tmp_path, frozen, [])
+    for profile in profiles:
+        assert f"| {profile['label']} | openai / {profile['model']} | pilot | `same-task` | 1 | 1 | 1/1 (100%)" in report
+
+
 @pytest.mark.parametrize("autocrlf", ["true", "false"])
 def test_regression_frozen_bytes_survive_clean_git_checkout(tmp_path, monkeypatch, autocrlf):
     git = shutil.which("git")

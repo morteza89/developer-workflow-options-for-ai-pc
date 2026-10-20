@@ -12,6 +12,14 @@ Start with [Dependency Migration](dependency-migration/README.md) for the curren
 
 The [handoff](AI_PC_WORKFLOW_HANDOFF.md) documents the proposal. Dependency Migration and Security Repair use 600 seconds. The user retained 720 seconds for Regression Tests on 20 October 2026 after successful 27B pilots. Its original 600-second results remain historical and are not pooled with the longer-budget experiment. Evaluation/setup/cleanup are outside each work budget. Infrastructure/API/context errors and manual cancellation remain possible.
 
+## OpenAI Models in Every GUI
+
+All three workflow controllers offer **GPT-6.1 Sol** (`gpt-6.1-sol`) and **GPT-6 Astra** (`gpt-6-astra`) as separate choices, alongside the two local models. Close and reopen an existing controller to load the new option. Select **GPT-6 Astra (OpenAI API)**, use **Set OpenAI API key**, then **Test connection** and **Run unscored pilot**. Warmups and pilots require billable-run confirmation; access depends on your OpenAI API project. No model fallback is used.
+
+Astra uses the same Responses API shell-action loop, medium reasoning effort, and 2048-token response limit as Sol. Both receive the selected workflow's unchanged budget: 600 seconds for Dependency Migration/Security Repair, 720 seconds for Regression Tests. Reports keep their model identities, profile fingerprints, usage, and costs separate.
+
+The [Astra profile template](dependency-migration/profiles/openai-astra.json) is copied to an ignored private profile when first selected; it does not replace or edit the Sol profile. It remains unqualified until host/profile evidence is completed. Standard pricing saved on 20 October 2026 is $10 input, $1 cached input, $12.50 cache write, and $50 output per million tokens for requests up to 272,000 input tokens; above that threshold, the corresponding rates are $20, $2, $25, and $75. These are usage-based estimates, not a spending cap; verify actual billing and any account-specific terms. Sources: [Astra API model documentation](https://developers.openai.com/api/docs/models/gpt-6-astra) and [OpenAI pricing](https://developers.openai.com/api/docs/pricing). No Astra model calls or qualification results are claimed by this integration.
+
 ## Regression Tests: Retained Budget
 
 Use **720 seconds for every model** in the current Regression Tests comparison, including local 27B, local 8B, and cloud profiles. The selected package remains [freeze-720s-requests-v2.json](regression-tests/artifacts/freeze-720s-requests-v2.json). The task, eight fault checks, 2048-token response limit, model profiles, and Docker image are unchanged from the duration-only follow-up. Early submission ends work; independent verification follows outside the work budget. The other two workflows remain at 600 seconds.

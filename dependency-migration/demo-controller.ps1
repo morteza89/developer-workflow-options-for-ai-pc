@@ -34,17 +34,20 @@ $script:watchFiles = @{}
 $script:profilePaths = @(
     'ptl-morteza89-27b.private.json',
     'ptl-8b.private.json',
-    'ptl-openai.private.json'
+    'ptl-openai.private.json',
+    'ptl-openai-astra.private.json'
 )
 $script:templatePaths = @(
     'article-27b.json',
     'local-8b.json',
-    'openai.json'
+    'openai.json',
+    'openai-astra.json'
 )
 $script:modelNames = @(
     'Qwen3.8 27B INT4 (local)',
     'Qwen3 8B INT8 (local)',
-    'GPT-6.1 Sol (OpenAI API)'
+    'GPT-6.1 Sol (OpenAI API)',
+    'GPT-6 Astra (OpenAI API)'
 )
 
 New-Item -ItemType Directory -Force -Path $script:logRoot | Out-Null
