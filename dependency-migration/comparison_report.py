@@ -93,6 +93,9 @@ def render_report(directory, frozen, profile_paths=DEFAULT_PROFILES, title="Depe
         "| --- | --- | --- | ---: | ---: | --- |",
     ]
     for profile_path in profile_paths:
+        if not Path(profile_path).is_file():
+            lines.append(f"| {cell(Path(profile_path).stem)} | not configured | not configured | 0 | 0 | PROFILE MISSING |")
+            continue
         profile = read_json(profile_path)
         count = sum(
             attempt.get("provider") == profile.get("provider")
@@ -167,6 +170,19 @@ def render_report(directory, frozen, profile_paths=DEFAULT_PROFILES, title="Depe
         lines.append(
             f"| {cell(attempt.get('label', 'unknown'))} | `{cell(attempt.get('attempt_id', 'unknown'))}` | {cell(outcome)} | {cell(stop)} | {duration(attempt.get('agent_seconds'))} | {duration(attempt.get('through_verification_seconds'))} | {throughput(attempt.get('completed_request_output_tokens_per_second'))} | {test_count(attempt, 'contract')} | {test_count(attempt, 'generated')} | {fee(attempt.get('api_fee_usd'))} | {tokens} |"
         )
+    fault_attempts = [attempt for attempt in attempts if attempt.get("verification", {}).get("faults_total", 0)]
+    if fault_attempts:
+        lines.extend([
+            "", "## Fault Detection", "",
+            "| Model | Attempt | Faults detected | Undetected faults | Evaluation errors |",
+            "| --- | --- | ---: | --- | --- |",
+        ])
+        for attempt in fault_attempts:
+            verification = attempt["verification"]
+            undetected = [name.removeprefix("fault_") for name, passed in verification.get("checks", {}).items() if name.startswith("fault_") and not passed]
+            errors = verification.get("phase_errors", {})
+            lines.append(f"| {cell(attempt.get('label', 'unknown'))} | `{cell(attempt.get('attempt_id', 'unknown'))}` | {verification['faults_detected']}/{verification['faults_total']} | {cell(', '.join(undetected) or 'none')} | {cell(', '.join(errors) or 'none')} |")
+        lines.extend(["", "Detection credit requires the same generated tests to pass on clean code and fail by ordinary assertions on each fault, without errors or skips. Raw failing-test counts alone are not detection credit."])
     lines.extend([
         "",
         "Output tokens/s is total provider-reported output tokens divided by summed completed model-request wall time (excluding tools and verification); n/a means usage was unavailable. Rates are approximate and may not be directly comparable across tokenizers/providers. Times are runner wall-clock seconds. API fees are estimates from recorded usage; unknown means usage was incomplete. Local API fees exclude hardware and energy costs.",

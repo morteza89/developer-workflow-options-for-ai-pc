@@ -1,4 +1,6 @@
+import ast
 import json
+import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -8,6 +10,131 @@ import pytest
 import bench
 import comparison_report
 import qualify
+
+
+@pytest.mark.parametrize("autocrlf", ["true", "false"])
+def test_regression_frozen_bytes_survive_clean_git_checkout(tmp_path, monkeypatch, autocrlf):
+    git = shutil.which("git")
+    assert git is not None, "Git is required to verify frozen checkout bytes"
+    workspace = bench.ENGINE_ROOT.parent
+    regression = workspace / "regression-tests"
+    monkeypatch.setattr(bench, "ROOT", regression)
+    original = bench.package_hashes()
+    assert len(original) == 41
+    assert {name for name in original if name.startswith("engine/")} == {
+        "engine/bench.py", "engine/worker.py", "engine/requirements-runner.lock",
+    }
+    freeze = regression / "artifacts/freeze-600s-requests-v1.json"
+    if freeze.is_file():
+        assert original == bench.load(freeze)["hashes"]
+
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    shutil.copyfile(workspace / ".gitattributes", repository / ".gitattributes")
+    paths = {
+        name: Path("dependency-migration") / name.removeprefix("engine/")
+        if name.startswith("engine/") else Path("regression-tests") / name
+        for name in original
+    }
+    for relative in paths.values():
+        destination = repository / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(workspace / relative, destination)
+    environment = {name: value for name, value in os.environ.items() if not name.upper().startswith("GIT_")}
+    environment.update(GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL=os.devnull, GIT_ATTR_NOSYSTEM="1")
+
+    def run_git(*arguments):
+        return subprocess.run(
+            [git, "-c", f"core.autocrlf={autocrlf}", "-c", "core.safecrlf=false",
+             "-c", f"core.attributesFile={os.devnull}", *arguments],
+            cwd=repository, env=environment, check=True, capture_output=True,
+            text=True, encoding="utf-8", timeout=30,
+        )
+
+    run_git("init", "--template=")
+    run_git("add", "--", ".gitattributes", "dependency-migration", "regression-tests")
+    indexed = run_git("ls-files", "-z").stdout.split("\0")
+    assert set(indexed) - {""} == {".gitattributes", *(path.as_posix() for path in paths.values())}
+    checkout = tmp_path / "checkout"
+    assert not checkout.exists()
+    run_git("checkout-index", "--all", f"--prefix={checkout.as_posix()}/")
+    assert (checkout / ".gitattributes").read_bytes() == (workspace / ".gitattributes").read_bytes()
+    reconstructed = {name: bench.digest(checkout / relative) for name, relative in paths.items()}
+    assert reconstructed == original
+    monkeypatch.setattr(bench, "ROOT", checkout / "regression-tests")
+    monkeypatch.setattr(bench, "ENGINE_ROOT", checkout / "dependency-migration")
+    assert bench.package_hashes() == original
+    if freeze.is_file():
+        assert reconstructed == bench.load(freeze)["hashes"]
+
+
+@pytest.mark.parametrize("function_name", ["prepend_scheme_if_needed", "get_auth_from_url", "urldefragauth"])
+def test_regression_source_issue_rejects_alias_preserved_stub(function_name):
+    source = f"""import requests.utils as utils
+original = utils.{function_name}
+
+def stub(*args, **kwargs):
+    return original(*args, **kwargs)
+
+utils.{function_name} = stub
+
+def test_value():
+    assert original('https://example.com') is not None
+"""
+    assert bench.regression_source_issue(ast.parse(source)) == "production_function_replacement"
+
+
+def test_regression_source_issue_accepts_assertion_helpers():
+    source = """from requests.utils import urldefragauth as clean_url
+
+def check_url(value, expected):
+    assert clean_url(value) == expected
+
+def test_url():
+    check_url('https://example.com/#fragment', 'https://example.com/')
+"""
+    tree = ast.parse(source)
+    assert bench.regression_source_issue(tree) is None
+
+
+def test_comparison_report_handles_missing_laptop_profile(tmp_path):
+    report = comparison_report.render_report(tmp_path, {}, [tmp_path / "other-laptop.private.json"])
+    assert "other-laptop.private" in report
+    assert "PROFILE MISSING" in report
+
+
+def test_comparison_report_preserves_partial_fault_credit(tmp_path):
+    attempt = tmp_path / "attempt-partial"
+    attempt.mkdir()
+    frozen = {"created_at": "test"}
+    bench.save(attempt / "freeze.json", frozen)
+    bench.save(attempt / "result.json", {
+        "attempt_id": attempt.name, "label": "local", "mock": False,
+        "verification": {"faults_detected": 1, "faults_total": 2,
+                         "checks": {"fault_query": True, "fault_auth": False},
+                         "phase_errors": {"fault_auth": "TimeoutExpired"}},
+    })
+    report = comparison_report.render_report(tmp_path, frozen, [])
+    assert "## Fault Detection" in report
+    assert "| local | `attempt-partial` | 1/2 | auth | fault_auth |" in report
+
+
+@pytest.mark.parametrize("outcome,exit_code,expected", [
+    ('<failure message="assert actual == expected"/>', 1, True),
+    ('<failure message="AssertionError: wrong value"/>', 1, True),
+    ('<failure message="Failed: explicit pytest.fail"/>', 1, False),
+    ('<error message="ImportError"/>', 1, False),
+    ('<skipped/>', 1, False),
+    ('', 0, False),
+    ('<failure message="assert actual == expected"/>', 2, False),
+])
+def test_fault_detection_requires_assertion_failure(tmp_path, outcome, exit_code, expected):
+    report = tmp_path / "report.xml"
+    report.write_text(f'<testsuites><testsuite><testcase name="test_url" classname="tests.test_generated">{outcome}</testcase></testsuite></testsuites>', encoding="utf-8")
+    baseline = {"cases": [{"name": "test_url", "classname": "tests.test_generated"}]}
+    assert bench.fault_detected(report, exit_code, baseline) is expected
+    baseline["cases"][0]["name"] = "test_other"
+    assert not bench.fault_detected(report, exit_code, baseline)
 
 
 @pytest.mark.parametrize("existing", [False, True])
@@ -271,6 +398,168 @@ def test_verification_evaluates_contract_despite_missing_or_broken_tests(tmp_pat
     assert result["test_results"]["contract"]["failed"] == 1
     if source is None:
         assert result["phase_errors"]["generated"] == "MissingGeneratedTestFile"
+
+
+@pytest.fixture
+def configured_regression_verifier(tmp_path, monkeypatch):
+    root = tmp_path / "workflow"
+    starter = root / "starter"
+    (starter / "tests").mkdir(parents=True)
+    (root / "grader").mkdir()
+    production = "def value():\n    return 2 + 3\n"
+    generated_path = "tests/test_generated.py"
+    (starter / "production.py").write_text(production, encoding="utf-8")
+    (starter / generated_path).write_text("", encoding="utf-8")
+    (root / "grader/test_witnesses.py").write_text("def test_contract():\n    assert True\n", encoding="utf-8")
+    workflow = {
+        "allowed_files": [generated_path],
+        "preserve_baseline_files": True,
+        "generated_test_path": generated_path,
+        "contract_tests": ["test_witnesses.py"],
+        "pydantic_warnings_as_errors": False,
+        "fault_variants": [
+            {"name": "first", "path": "production.py", "before": "2 + 3", "after": "0 + 3"},
+            {"name": "second", "path": "production.py", "before": "2 + 3", "after": "2 + 0"},
+        ],
+    }
+    monkeypatch.setattr(bench, "ROOT", root)
+    monkeypatch.setattr(bench, "WORKFLOW", workflow)
+    monkeypatch.setattr(bench, "ALLOWED", workflow["allowed_files"])
+    submission = tmp_path / "submission"
+    shutil.copytree(starter, submission)
+    source = "from production import value\n\ndef check_value():\n    assert value() == 5\n\ndef test_value():\n    check_value()\n"
+    (submission / generated_path).write_text(source, encoding="utf-8")
+    (submission / "production.py").write_text("def value():\n    return 999\n", encoding="utf-8")
+    (submission / "submission_only.py").write_text("tampered = True\n", encoding="utf-8")
+    output = tmp_path / "output"
+    output.mkdir()
+    containers = {}
+    executed = []
+    cleaned = []
+    outcomes = {}
+    snapshot = {path.relative_to(starter): path.read_bytes() for path in starter.rglob("*") if path.is_file()}
+
+    def fake_docker(*arguments, **kwargs):
+        if arguments[0] == "run":
+            name = arguments[arguments.index("--name") + 1]
+            mounts = [arguments[index + 1] for index, argument in enumerate(arguments) if argument == "--mount"]
+            task_mount = next(mount for mount in mounts if "dst=/task," in mount)
+            task = Path(task_mount.split("src=", 1)[1].split(",dst=", 1)[0])
+            phase = task.name if task.parent == output else "contract" if any("dst=/grader," in mount for mount in mounts) else "generated"
+            assert phase in {"contract", "generated", "fault_first", "fault_second"}
+            assert len(mounts) == (2 if phase == "contract" else 1)
+            assert any("dst=/grader," in mount for mount in mounts) is (phase == "contract")
+            if phase == "contract":
+                assert f"type=bind,src={root / 'grader'},dst=/grader,readonly" in mounts
+            if phase.startswith("fault_"):
+                fault = next(fault for fault in workflow["fault_variants"] if phase == "fault_" + fault["name"])
+                assert (task / "production.py").read_text(encoding="utf-8") == production.replace(fault["before"], fault["after"])
+                expected = (submission / generated_path).read_bytes() if (submission / generated_path).exists() else b""
+                assert (task / generated_path).read_bytes() == expected
+                assert {path.relative_to(task) for path in task.rglob("*") if path.is_file()} == set(snapshot)
+            else:
+                assert task == submission
+            containers[name] = phase
+        elif arguments[0] == "exec":
+            phase = containers[arguments[1]]
+            outcome = outcomes.get(phase, "failure" if phase.startswith("fault_") else "pass")
+            if "pytest" in arguments:
+                executed.append(phase)
+                tests = arguments[arguments.index("pytest") + 1:arguments.index("-q")]
+                assert tests == (("/grader/test_witnesses.py",) if phase == "contract" else ("/task/" + generated_path,))
+                assert kwargs == {"timeout": 17, "check": False}
+                if outcome == "timeout":
+                    raise subprocess.TimeoutExpired("mock-docker", 17)
+                return subprocess.CompletedProcess(arguments, 0 if outcome == "pass" else 1, "synthetic pytest output", "")
+            assert arguments[2:] == ("cat", "/tmp/report.xml")
+            tags = {
+                "pass": "",
+                "failure": '<failure message="assert value() == 5"/>',
+                "skip": "<skipped/>",
+                "explicit_failure": '<failure message="Failed: explicit pytest.fail"/>',
+                "error": '<error message="ImportError"/>',
+            }
+            xml = "<malformed" if outcome == "malformed" else f'<testsuites><testsuite><testcase classname="tests.test_generated" name="test_value">{tags[outcome]}</testcase></testsuite></testsuites>'
+            return subprocess.CompletedProcess(arguments, 0, xml, "")
+        else:
+            assert arguments[0] == "rm"
+            cleaned.append(containers[arguments[-1]])
+        return subprocess.CompletedProcess(arguments, 0, "", "")
+
+    monkeypatch.setattr(bench, "docker", fake_docker)
+
+    def verify():
+        result = bench.verify(submission, output, "mock-image", {"container_cpus": 2, "container_memory": "2g", "verifier_timeout_seconds": 17})
+        assert {path.relative_to(starter): path.read_bytes() for path in starter.rglob("*") if path.is_file()} == snapshot
+        assert cleaned == executed
+        return result
+
+    return submission / generated_path, outcomes, executed, verify
+
+
+def test_configured_regression_verify_isolates_faults_and_accepts_helper_assertion(configured_regression_verifier):
+    generated, outcomes, executed, verify = configured_regression_verifier
+    result = verify()
+    assert executed == ["contract", "generated", "fault_first", "fault_second"]
+    assert result["accepted"]
+    assert result["category"] == "accepted"
+    assert result["faults_total"] == result["faults_detected"] == 2
+    assert result["checks"] == {phase: True for phase in executed}
+    assert result["test_results"]["contract"]["passed"] == 1
+    assert result["test_results"]["generated"]["passed"] == 1
+    for phase in ("fault_first", "fault_second"):
+        assert result["test_results"][phase]["failed"] == 1
+    assert result["phase_errors"] == {}
+    assert result["cleanup_errors"] == []
+
+
+@pytest.mark.parametrize("source,issue", [
+    (None, "missing_test_file"),
+    ("def broken(", "invalid_test_source"),
+    ("def test_empty():\n    pass\n", "missing_regression_assertions"),
+    ("def test_value():\n    assert value() == 5\n    raise AssertionError('artificial')\n", "artificial_test_exception"),
+])
+def test_configured_regression_verify_rejects_invalid_generated_source(configured_regression_verifier, source, issue):
+    generated, outcomes, executed, verify = configured_regression_verifier
+    if source is None:
+        generated.unlink()
+    else:
+        generated.write_text(source, encoding="utf-8")
+    result = verify()
+    assert not result["accepted"]
+    assert result["category"] == result["regression_issue"] == issue
+    assert result["checks"]["contract"]
+    assert not result["checks"]["generated"]
+    assert result["faults_total"] == 2
+    if source is None:
+        assert executed == ["contract"]
+        assert result["faults_detected"] == 0
+        assert result["phase_errors"] == {phase: "MissingGeneratedTestFile" for phase in ("generated", "fault_first", "fault_second")}
+
+
+@pytest.mark.parametrize("phase,outcome,error", [
+    ("fault_first", "pass", None),
+    ("fault_first", "skip", None),
+    ("fault_first", "explicit_failure", None),
+    ("fault_first", "error", None),
+    ("fault_first", "timeout", "TimeoutExpired"),
+    ("fault_first", "malformed", "ParseError"),
+    ("generated", "skip", None),
+    ("generated", "timeout", "TimeoutExpired"),
+    ("generated", "malformed", "ParseError"),
+    ("contract", "failure", None),
+])
+def test_configured_regression_verify_requires_real_detection(configured_regression_verifier, phase, outcome, error):
+    generated, outcomes, executed, verify = configured_regression_verifier
+    outcomes[phase] = outcome
+    result = verify()
+    assert executed == ["contract", "generated", "fault_first", "fault_second"]
+    assert not result["accepted"]
+    assert result["category"] == "verification_failed"
+    assert not result["checks"][phase]
+    assert result["faults_total"] == 2
+    assert result["faults_detected"] == (0 if phase == "generated" else 2 if phase == "contract" else 1)
+    assert result["phase_errors"] == ({phase: error} if error else {})
 
 
 def test_submission_policy_violation_retains_protected_results(tmp_path, monkeypatch):

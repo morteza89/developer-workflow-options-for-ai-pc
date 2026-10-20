@@ -43,6 +43,21 @@ def configure_package(root):
             raise ValueError("workflow.json generated_test_path must be a safe relative path")
         if WORKFLOW.get("require_generated_test_to_fail_on_baseline") and not WORKFLOW.get("preserve_baseline_files"):
             raise ValueError("Vulnerable-baseline checks require preserve_baseline_files")
+        faults = WORKFLOW.get("fault_variants", [])
+        if not isinstance(faults, list) or any(
+            not isinstance(fault, dict)
+            or set(fault) != {"name", "path", "before", "after"}
+            or not isinstance(fault["name"], str)
+            or not fault["name"].isidentifier()
+            or not safe_path(fault["path"])
+            or fault["path"] in allowed
+            or not isinstance(fault["before"], str)
+            or not fault["before"]
+            or not isinstance(fault["after"], str)
+            or fault["before"] == fault["after"]
+            for fault in faults
+        ) or len({fault["name"] for fault in faults}) != len(faults):
+            raise ValueError("workflow.json must define unique, non-inert faults in immutable source")
         ALLOWED = tuple(allowed)
     else:
         WORKFLOW = {}
@@ -213,6 +228,31 @@ def junit_summary(path):
     return {"total": len(cases), **{status: sum(case["status"] == status for case in cases) for status in ("passed", "failed", "errors", "skipped")}, "cases": cases}
 
 
+def fault_detected(path, exit_code, baseline):
+    summary = junit_summary(path)
+    failures = [failure for case in ET.parse(path).getroot().iter("testcase") for failure in case.findall("failure")]
+    ordinary = all(failure.get("message", "").startswith(("assert ", "AssertionError")) for failure in failures)
+    identities = lambda result: sorted((case["classname"], case["name"]) for case in result["cases"])
+    return exit_code == 1 and summary["failed"] > 0 and not summary["errors"] and not summary["skipped"] and ordinary and identities(summary) == identities(baseline)
+
+
+def regression_source_issue(tree):
+    targets = {"prepend_scheme_if_needed", "get_auth_from_url", "urldefragauth"}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Raise):
+            return "artificial_test_exception"
+        if isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign, ast.Delete)):
+            assigned = node.targets if isinstance(node, (ast.Assign, ast.Delete)) else [node.target]
+            if any(isinstance(target, ast.Attribute) and target.attr in targets for value in assigned for target in ast.walk(value)):
+                return "production_function_replacement"
+        if isinstance(node, ast.Call):
+            function = node.func
+            name = function.id if isinstance(function, ast.Name) else function.attr if isinstance(function, ast.Attribute) else ""
+            if name in {"setattr", "delattr", "patch", "reload"}:
+                return "production_function_replacement"
+    return None
+
+
 def has_test_assertion(tree):
     for test_function in (node for node in ast.walk(tree) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name.startswith("test")):
         pending = list(test_function.body)
@@ -236,8 +276,11 @@ def verify(submission, output, image, policy):
     regression_issue = None
     try:
         tree = ast.parse(generated_file.read_text(encoding="utf-8"))
-        if not has_test_assertion(tree):
+        has_assertion = any(isinstance(node, ast.Assert) and not isinstance(node.test, ast.Constant) for node in ast.walk(tree)) if WORKFLOW.get("fault_variants") else has_test_assertion(tree)
+        if not has_assertion:
             regression_issue = "missing_regression_assertions"
+        if WORKFLOW.get("fault_variants"):
+            regression_issue = regression_source_issue(tree) or regression_issue
     except FileNotFoundError:
         regression_issue = "missing_test_file"
     except (SyntaxError, UnicodeError):
@@ -257,8 +300,22 @@ def verify(submission, output, image, policy):
             baseline = output / "negative-control"
             shutil.copytree(ROOT / "starter", baseline, ignore=shutil.ignore_patterns("__pycache__", ".pytest_cache"))
             shutil.copyfile(generated_file, baseline / generated_test)
+    fault_sources = {}
+    for fault in WORKFLOW.get("fault_variants", []):
+        phase = "fault_" + fault["name"]
+        phases[phase] = ["/task/" + generated_test]
+        source = output / phase
+        shutil.copytree(ROOT / "starter", source, ignore=shutil.ignore_patterns("__pycache__", ".pytest_cache"))
+        if generated_file.is_file():
+            shutil.copyfile(generated_file, source / generated_test)
+        target = source / fault["path"]
+        original = target.read_text(encoding="utf-8")
+        if original.count(fault["before"]) != 1:
+            raise ValueError(f"Fault must match exactly once: {fault['name']}")
+        target.write_text(original.replace(fault["before"], fault["after"], 1), encoding="utf-8")
+        fault_sources[phase] = source
     for phase, tests in phases.items():
-        if phase == "generated" and regression_issue == "missing_test_file":
+        if (phase == "generated" or phase in fault_sources) and regression_issue == "missing_test_file":
             results[phase] = False
             test_results[phase] = {"total": 0, "passed": 0, "failed": 0, "errors": 1, "skipped": 0, "cases": []}
             phase_errors[phase] = "MissingGeneratedTestFile"
@@ -269,9 +326,10 @@ def verify(submission, output, image, policy):
             phase_errors[phase] = "MissingGeneratedTestFile"
             continue
         name = "migration-verifier-" + uuid.uuid4().hex[:12]
-        task_source = output / "negative-control" if phase == "negative_control" else submission
+        task_source = fault_sources.get(phase, output / "negative-control" if phase == "negative_control" else submission)
         try:
-            docker("run", "-d", "--name", name, "--network", "none", "--read-only", "--cap-drop", "ALL", "--security-opt", "no-new-privileges", "--pids-limit", "128", "--cpus", policy["container_cpus"], "--memory", policy["container_memory"], "--tmpfs", "/tmp:rw,nosuid,size=128m", "--mount", f"type=bind,src={task_source.resolve()},dst=/task,readonly", "--mount", f"type=bind,src={ROOT / 'grader'},dst=/grader,readonly", image, "tail", "-f", "/dev/null")
+            grader_mount = ["--mount", f"type=bind,src={ROOT / 'grader'},dst=/grader,readonly"] if phase == "contract" else []
+            docker("run", "-d", "--name", name, "--network", "none", "--read-only", "--cap-drop", "ALL", "--security-opt", "no-new-privileges", "--pids-limit", "128", "--cpus", policy["container_cpus"], "--memory", policy["container_memory"], "--tmpfs", "/tmp:rw,nosuid,size=128m", "--mount", f"type=bind,src={task_source.resolve()},dst=/task,readonly", *grader_mount, image, "tail", "-f", "/dev/null")
             if phase == "contract":
                 tests = ["/grader/" + path for path in contract_tests]
             warning_args = ["-W", "error::pydantic.PydanticDeprecatedSince20"] if WORKFLOW.get("pydantic_warnings_as_errors", ROOT == ENGINE_ROOT) else []
@@ -283,7 +341,9 @@ def verify(submission, output, image, policy):
                 report.write_text(copied.stdout, encoding="utf-8")
                 test_results[phase] = junit_summary(report)
             passed = completed.returncode == 0 and copied.returncode == 0 and junit_passed(report)
-            if phase == "negative_control" and copied.returncode == 0:
+            if phase in fault_sources:
+                results[phase] = copied.returncode == 0 and results.get("generated", False) and fault_detected(report, completed.returncode, test_results["generated"])
+            elif phase == "negative_control" and copied.returncode == 0:
                 summary = test_results[phase]
                 results[phase] = completed.returncode != 0 and summary["failed"] > 0 and summary["errors"] == 0 and summary["skipped"] == 0
             else:
@@ -299,8 +359,9 @@ def verify(submission, output, image, policy):
                 cleanup_errors.append({"container": name, "error": cleanup_error})
     if regression_issue:
         results["generated"] = False
+    fault_checks = {name: passed for name, passed in results.items() if name in fault_sources}
     accepted = all(results.values())
-    return {"accepted": accepted, "category": "accepted" if accepted else regression_issue or "verification_failed", "checks": results, "test_results": test_results, "phase_errors": phase_errors, "regression_issue": regression_issue, "failed_tests": failed_tests, "cleanup_errors": cleanup_errors}
+    return {"accepted": accepted, "category": "accepted" if accepted else regression_issue or "verification_failed", "checks": results, "faults_detected": sum(fault_checks.values()), "faults_total": len(fault_checks), "test_results": test_results, "phase_errors": phase_errors, "regression_issue": regression_issue, "failed_tests": failed_tests, "cleanup_errors": cleanup_errors}
 
 
 def check_submission(container, output, image, policy):
@@ -481,7 +542,10 @@ def _run_attempt(profile, frozen, scored, mock=False):
     prepared = output / "prepared"
     shutil.copytree(ROOT / "starter", prepared, ignore=shutil.ignore_patterns("__pycache__", ".pytest_cache"))
     if mock and profile.get("seed_reference"):
+        excluded = set(profile.get("seed_excludes", ()))
         for relative in ALLOWED:
+            if relative in excluded:
+                continue
             source = ROOT / "reference" / relative
             if not source.is_file():
                 raise FileNotFoundError(f"Smoke reference file is missing: {relative}")
@@ -628,7 +692,7 @@ def report(directory):
                 native_totals[key] = native_totals.get(key, 0) + value
         completion_times = [attempt["completion_seconds"] for attempt in accepted if attempt.get("completion_seconds") is not None]
         row.update(provider=attempts[0].get("provider"), model=attempts[0].get("model"), execution_mode=attempts[0].get("execution_mode", "legacy_deadline"), deadline_seconds=attempts[0].get("deadline_seconds"), acceptance_rate=len(accepted) / len(attempts), median_completion_seconds=statistics.median(completion_times) if completion_times else None, native_usage_totals=native_totals, usage_complete=all(attempt.get("usage_complete", False) for attempt in attempts), cleanup_failures=sum(bool(attempt.get("cleanup_error") or attempt.get("volume_cleanup_error") or attempt.get("verification", {}).get("cleanup_errors")) for attempt in attempts), contract_passes=sum(attempt.get("verification", {}).get("checks", {}).get("contract", False) for attempt in attempts), generated_test_passes=sum(attempt.get("verification", {}).get("checks", {}).get("generated", False) for attempt in attempts))
-        row["evaluation_results"] = [{"attempt_id": attempt.get("attempt_id"), "stop_reason": attempt.get("exit_status", attempt["category"]), "test_results": attempt.get("verification", {}).get("test_results", {}), "regression_issue": attempt.get("verification", {}).get("regression_issue"), "phase_errors": attempt.get("verification", {}).get("phase_errors", {}), "submission_violations": attempt.get("submission_violations", [])} for attempt in attempts]
+        row["evaluation_results"] = [{"attempt_id": attempt.get("attempt_id"), "stop_reason": attempt.get("exit_status", attempt["category"]), "checks": attempt.get("verification", {}).get("checks", {}), "faults_detected": attempt.get("verification", {}).get("faults_detected"), "faults_total": attempt.get("verification", {}).get("faults_total"), "test_results": attempt.get("verification", {}).get("test_results", {}), "regression_issue": attempt.get("verification", {}).get("regression_issue"), "phase_errors": attempt.get("verification", {}).get("phase_errors", {}), "submission_violations": attempt.get("submission_violations", [])} for attempt in attempts]
         for metric in ("model_calls", "tool_calls", "failed_tool_calls", "rejected_submissions", "submission_checks", "incomplete_request_count", "normalized_action_response_count", "discarded_action_block_count", "request_seconds", "tool_seconds", "verifier_seconds", "submission_check_seconds"):
             values = [attempt.get(metric) for attempt in attempts]
             row["total_" + metric] = sum(values) if all(value is not None for value in values) else None
@@ -677,7 +741,7 @@ def main(package_root=None):
         commands = ["cat TASK.md"]
         if not args.deadline_probe:
             commands += ["python -m pytest -q -p no:cacheprovider", "printf 'COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT\\nsmoke\\n'"]
-        profile = {"label": "offline-deadline-probe" if args.deadline_probe else "offline-harness-smoke", "provider": "mock", "model": "offline-mock", "mock_commands": commands, "mock_wait_after_commands": args.deadline_probe, "seed_reference": not args.deadline_probe}
+        profile = {"label": "offline-deadline-probe" if args.deadline_probe else "offline-harness-smoke", "provider": "mock", "model": "offline-mock", "mock_commands": commands, "mock_wait_after_commands": args.deadline_probe, "seed_reference": True, "seed_excludes": [WORKFLOW.get("generated_test_path", "tests/test_generated.py")] if args.deadline_probe else []}
         return run_attempt(profile, load(args.freeze), False, mock=True)
     return 0
 

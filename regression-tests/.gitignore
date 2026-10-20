@@ -1,0 +1,5 @@
+.venv-task/
+__pycache__/
+.pytest_cache/
+artifacts/*
+!artifacts/freeze-*.json

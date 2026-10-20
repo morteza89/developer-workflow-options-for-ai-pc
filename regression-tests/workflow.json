@@ -1,0 +1,61 @@
+{
+  "task_id": "requests-2.31.0-url-regression-tests",
+  "starting_commit": "147c8511ddbfa5e8f71bbf5c18ede0c4ceb3bba4",
+  "allowed_files": ["tests/test_generated.py"],
+  "preserve_baseline_files": true,
+  "contract_tests": ["test_witnesses.py"],
+  "generated_test_path": "tests/test_generated.py",
+  "pydantic_warnings_as_errors": false,
+  "default_freeze": "freeze-600s-requests-v1.json",
+  "default_image": "requests-regression:0.1",
+  "fault_variants": [
+    {
+      "name": "overwrite_existing_scheme",
+      "path": "requests/utils.py",
+      "before": "    if scheme is None:\n        scheme = new_scheme",
+      "after": "    scheme = new_scheme"
+    },
+    {
+      "name": "lose_query",
+      "path": "requests/utils.py",
+      "before": "return urlunparse((scheme, netloc, path, \"\", query, fragment))",
+      "after": "return urlunparse((scheme, netloc, path, \"\", \"\", fragment))"
+    },
+    {
+      "name": "drop_port",
+      "path": "requests/utils.py",
+      "before": "    netloc = parsed.netloc",
+      "after": "    netloc = parsed.host"
+    },
+    {
+      "name": "lose_credentials_adding_scheme",
+      "path": "requests/utils.py",
+      "before": "        netloc = \"@\".join([auth, netloc])",
+      "after": "        netloc = netloc"
+    },
+    {
+      "name": "fail_percent_decode_credentials",
+      "path": "requests/utils.py",
+      "before": "        auth = (unquote(parsed.username), unquote(parsed.password))",
+      "after": "        auth = (str(parsed.username), str(parsed.password))"
+    },
+    {
+      "name": "wrong_missing_credential_value",
+      "path": "requests/utils.py",
+      "before": "        auth = (\"\", \"\")",
+      "after": "        auth = (None, None)"
+    },
+    {
+      "name": "retain_fragment",
+      "path": "requests/utils.py",
+      "before": "return urlunparse((scheme, netloc, path, params, query, \"\"))",
+      "after": "return urlunparse((scheme, netloc, path, params, query, fragment))"
+    },
+    {
+      "name": "retain_auth_cleanup",
+      "path": "requests/utils.py",
+      "before": "    netloc = netloc.rsplit(\"@\", 1)[-1]",
+      "after": "    netloc = netloc"
+    }
+  ]
+}

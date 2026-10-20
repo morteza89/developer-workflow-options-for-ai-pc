@@ -1,0 +1,5 @@
+# Maintainer Notes
+
+This is a test-authoring task, not a dependency migration or source repair. The production Requests source is pinned and immutable. Only `tests/test_generated.py` is exported from your work. Tests must import `requests.utils` from this task's source tree, not an installed Requests release. `PYTHONPATH=/task` is provided by the task image. Pytest and Requests' dependencies are already installed; plugin autoload is disabled. Never install dependencies or use the network.
+
+The generated suite must pass on the clean source and fail by ordinary assertions on all eight independently reconstructed faults described by the behavior contract. The verifier runs only the generated file for fault phases, without task conftest files. Protected tests, reference tests, and fault definitions are not available in the task mount. Keep assertions self-contained and directly exercise the real functions.

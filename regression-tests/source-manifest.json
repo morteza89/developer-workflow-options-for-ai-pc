@@ -1,0 +1,26 @@
+{
+  "repository": "https://github.com/psf/requests",
+  "commit": "147c8511ddbfa5e8f71bbf5c18ede0c4ceb3bba4",
+  "tag": "v2.31.0",
+  "sha256": {
+    "LICENSE": "88046bf22d5b4f4b8cc85079ae6aae5424a3a1999db952ed152828ff325b2c6d",
+    "requests/__init__.py": "19700a147a73a5cf7267bc69bf7479bbc9b0a353395b01c06626a5e7ac89944e",
+    "requests/__version__.py": "ed80793f9df73ff752e96412e50da7f92f4768e163ee2ee3f995d53b196b0a72",
+    "requests/_internal_utils.py": "534eda8a19edd8b2634ba9006e071c4f91f4fee8c7ddc4fa2c134b13f4213b8d",
+    "requests/adapters.py": "818f8f41a290469cb9d6f7a1c67c52d5a382c910589fb9647f5d5e233a913824",
+    "requests/api.py": "4abd4045895bda4dd2c10045173aa920879774bbd128f1bb8599d2da63c94736",
+    "requests/auth.py": "c22f9cd4fe66348af740b76d8e5e2be5f727ae3bf3fb64d87b64de20ef8e83da",
+    "requests/certs.py": "53fa47ebbf69a0c7c07ee1eac2b754f91c2e71f4d7dd75403209255f93da4067",
+    "requests/compat.py": "a5f628ba1f9dbe433b779dd340657b5b93d3c0ecc3e56f9a452493e3703b1dd1",
+    "requests/cookies.py": "150ffe0e6328cd67d87fce28d4638666afde93b84a20f495df4cd0d2520c0e57",
+    "requests/exceptions.py": "9cf2c09ba29e53603725c6eda0bfc5a47a1ddf2e639590ea45251d96125b7404",
+    "requests/help.py": "53a08c13553001fe2162fc5e4222e1c0eb6d56c646928bf1a3428cc80f85324b",
+    "requests/hooks.py": "1d1abdfddd3e4ef471790a942f37fd27fa9fadfa0309d2756b7b7196cb2f0be0",
+    "requests/models.py": "1d3265b4d8e9d4fcd3c0e5e8e44e1a5b2c87653a5cffda8c909324ce7fb4c90c",
+    "requests/packages.py": "0cc32eaad5d2e0dcb186b458a9572bb145d9f01aa49a4a624e0d740c56662eee",
+    "requests/sessions.py": "ff53632cffce024cc9ab6ac65be374f6baf4f853846830d6a54723ee63ccf03e",
+    "requests/status_codes.py": "01ba243e2da17872085a2a66394e18dbfab987024d3da35be33a698519f31d2d",
+    "requests/structures.py": "1e2ff1575ccc89a50add1d743152c4ad05e8702a9ac8109bc13462c92538b8b7",
+    "requests/utils.py": "ce5b801c3a2716996ee171ad4a28cf177c02bcb19473c0d54ddc8fd3e7aaa768"
+  }
+}

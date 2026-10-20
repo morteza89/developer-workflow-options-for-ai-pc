@@ -16,3 +16,4 @@ __pycache__/
 !/security-repair/artifacts/freeze-600s-pyjwt-v8.json
 dependency-migration/profiles/*.private.json
 .env
+workflow-images.tar

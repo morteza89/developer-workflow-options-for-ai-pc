@@ -1,6 +1,6 @@
 #requires -Version 5.1
 param(
-    [ValidateSet('dependency-migration', 'security-repair')]
+    [ValidateSet('dependency-migration', 'security-repair', 'regression-tests')]
     [string]$Workflow = 'dependency-migration'
 )
 
@@ -10,19 +10,20 @@ Add-Type -AssemblyName System.Drawing
 
 $script:engineRoot = $PSScriptRoot
 $script:workspaceRoot = Split-Path -Parent $script:engineRoot
-$script:workflowRoot = if ($Workflow -eq 'security-repair') { Join-Path $script:workspaceRoot 'security-repair' } else { $script:engineRoot }
+$script:workflowRoot = Join-Path $script:workspaceRoot $Workflow
 $script:profileRoot = Join-Path $script:engineRoot 'profiles'
 $script:modelRoot = Join-Path $script:workspaceRoot 'models'
 $script:ovmsRoot = Join-Path $script:workspaceRoot 'ovms_downloaded\windows-2026.4.0-python-on\ovms'
 $script:runnerPython = Join-Path $script:engineRoot '.venv-runner\Scripts\python.exe'
 $script:benchScript = Join-Path $script:workflowRoot 'bench.py'
 $script:reportScript = Join-Path $script:engineRoot 'comparison_report.py'
-$script:freezePath = if ($Workflow -eq 'security-repair') { Join-Path $script:workflowRoot 'artifacts\freeze-600s-pyjwt-v8.json' } else { Join-Path $script:workflowRoot 'artifacts\freeze-600s-v9.json' }
+$script:freezeName = if ($Workflow -eq 'dependency-migration') { 'freeze-600s-v9.json' } else { (Get-Content -Raw (Join-Path $script:workflowRoot 'workflow.json') | ConvertFrom-Json).default_freeze }
+$script:freezePath = Join-Path $script:workflowRoot ('artifacts\' + $script:freezeName)
 $script:deadlineSeconds = 600
 $script:artifactRoot = Join-Path $script:workflowRoot 'artifacts'
 $script:logRoot = Join-Path $script:artifactRoot 'demo-controller'
-$script:workflowTitle = if ($Workflow -eq 'security-repair') { 'Security Repair | PyJWT CVE-2022-29217' } else { 'Dependency Migration Demo Controller' }
-$script:reportTitle = if ($Workflow -eq 'security-repair') { 'Security Repair Comparison' } else { 'Dependency Migration Comparison' }
+$script:workflowTitle = switch ($Workflow) { 'security-repair' { 'Security Repair | PyJWT CVE-2022-29217' } 'regression-tests' { 'Regression Tests | Requests URL Utilities' } default { 'Dependency Migration Demo Controller' } }
+$script:reportTitle = switch ($Workflow) { 'security-repair' { 'Security Repair Comparison' } 'regression-tests' { 'Regression Tests Comparison' } default { 'Dependency Migration Comparison' } }
 $script:timeBudgetLabel = '10-minute'
 $script:serverProcess = $null
 $script:taskProcess = $null

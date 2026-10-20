@@ -1,0 +1,4 @@
+dependency-migration/bench.py text eol=crlf
+dependency-migration/worker.py text eol=crlf
+dependency-migration/requirements-runner.lock text eol=crlf
+regression-tests/** -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
