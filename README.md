@@ -2,6 +2,25 @@
 
 **To reproduce the working local model on another laptop:** follow [the Windows 27B replication guide](dependency-migration/MODELS.md#replicate-on-another-windows-laptop), then the relevant workflow's setup guide. Dependency Migration and Security Repair use 600 seconds (10 minutes); Regression Tests uses 720 seconds (12 minutes). Keep each workflow's selected freeze and historical results separate.
 
+## Automatic Local Model Downloads
+
+All three workflow GUIs now prepare missing local model files automatically. Complete the existing locked-runner and native Windows OVMS setup first, then open a workflow controller, select a local model, and click **Start selected local model**. There is no need to run a Hugging Face download command yourself. Opening the GUI or choosing a cloud model does not download weights.
+
+The controller checks the selected model in the background. Complete existing assets are reused offline; missing or incomplete assets are downloaded from the pinned public Hugging Face revision. The log shows a wait message, source, destination, file progress, and byte progress during transfer. Downloads can be many GB and take considerable time. A free-space check runs before transfer. Downloading and model startup are outside the benchmark's work budget.
+
+| Local choice | Pinned Hugging Face repository | Revision |
+| --- | --- | --- |
+| Qwen3.8 27B INT4 | `Morteza89/qwen3.8-27b-int4-ov` | `0b379da0a1b2aa7987693b253724f19ad82928f1` |
+| Qwen3 8B INT8 | `OpenVINO/Qwen3-8B-int8-ov` | `f82c978d714abc9c398efa361827a76d3cae5473` |
+| Qwen3-Coder 30B-A3B INT4 | `OpenVINO/Qwen3-Coder-30B-A3B-Instruct-int4-ov` | `21140c68a63012da511fe50656319e00be2f6542` |
+| Qwen3.8 Fable 5 Coding INT4 | `Morteza89/qwen3.8-27b-fable-5-coding-distilled-int4-ov` | `6a84fb7b49812848f4541b84ae45307ad4c1fb8d` |
+
+During preparation, model selection and pilot controls are disabled. **Cancel download** stops preparation without deleting downloaded data. Clicking Start again retries and resumes Hugging Face transfers where possible. Closing the window during preparation offers cancellation; the downloader is not deliberately left running. Different controllers cannot prepare the same model folder simultaneously.
+
+Only successful preparation starts OVMS. Wait for **AVAILABLE**, then **Test connection** before running a pilot. A failed download leaves the server and pilot stopped; the log gives the failure and retry guidance. The 8B launch now uses the model directory relative to this checkout rather than a configuration file containing another laptop's absolute path.
+
+The shared [model setup helper](dependency-migration/model_setup.py) checks required weight sizes and runtime assets, and records completed download manifests for subsequent offline checks. These are download-completeness checks, not model/host qualification or a substitute for independent artifact hashes. Models and download metadata remain local and ignored by Git. This feature does not install OVMS, Docker, drivers, or the runner, and does not change task contracts, deadlines, or selected freezes.
+
 Start with [Dependency Migration](dependency-migration/README.md) for the current local-model pilot and its 600-second policy. Option 3, [Security Repair](security-repair/README.md), is a separate PyJWT backport task, offline-qualified and now using a shared 600-second budget. Earlier 240-second pilots show OpenAI accepted, 27B timed out near completion, and 8B submitted incomplete; these need same-freeze 600-second reruns and are not scored results.
 
 | Folder | Scope | State |

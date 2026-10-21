@@ -12,6 +12,98 @@ import comparison_report
 import qualify
 
 
+def test_model_setup_completeness_and_interrupted_download(tmp_path):
+    import model_setup
+
+    model = dict(model_setup.MODELS["qwen3-coder-30b-a3b-ov"], weights={"openvino_model.bin": 5})
+    assert not model_setup.complete(tmp_path, model)
+    names = list(model_setup.required_files(model))
+    for name in names:
+        (tmp_path / name).write_text("asset", encoding="utf-8")
+    assert model_setup.complete(tmp_path, model)
+    (tmp_path / model_setup.PENDING).touch()
+    assert not model_setup.complete(tmp_path, model)
+    (tmp_path / model_setup.PENDING).unlink()
+    (tmp_path / model_setup.RECEIPT).write_text(json.dumps({**model, "files": {name: 5 for name in names}}), encoding="utf-8")
+    assert model_setup.complete(tmp_path, model)
+    (tmp_path / names[0]).write_text("truncated", encoding="utf-8")
+    assert not model_setup.complete(tmp_path, model)
+
+
+def test_model_setup_download_retry_progress_and_offline_reuse(tmp_path, monkeypatch, capsys):
+    from types import SimpleNamespace
+    import huggingface_hub
+    import model_setup
+
+    model = dict(model_setup.MODELS["qwen3-coder-30b-a3b-ov"], weights={"openvino_model.bin": 5})
+    monkeypatch.setitem(model_setup.MODELS, "test-local", model)
+    names = list(model_setup.required_files(model))
+    info = SimpleNamespace(sha=model["revision"], siblings=[SimpleNamespace(rfilename=name, size=5) for name in names])
+    monkeypatch.setattr(huggingface_hub.HfApi, "model_info", lambda *args, **kwargs: info)
+    monkeypatch.setattr(model_setup.shutil, "disk_usage", lambda path: SimpleNamespace(free=10 ** 10))
+    calls = []
+
+    def download_file(**kwargs):
+        assert kwargs["revision"] == model["revision"]
+        assert kwargs["token"] is False and kwargs["endpoint"] == "https://huggingface.co"
+        calls.append(kwargs)
+        if len(calls) == 2:
+            raise OSError("simulated connection interruption")
+        with kwargs["tqdm_class"](total=5, desc=kwargs["filename"], unit="B", disable=False) as progress:
+            progress.update(5)
+        (kwargs["local_dir"] / kwargs["filename"]).write_text("asset", encoding="utf-8")
+
+    monkeypatch.setattr(huggingface_hub, "hf_hub_download", download_file)
+    with pytest.raises(OSError, match="connection interruption"):
+        model_setup.prepare("test-local", tmp_path)
+    directory = tmp_path / model["directory"]
+    assert (directory / model_setup.PENDING).exists()
+    assert not model_setup.complete(directory, model)
+    model_setup.prepare("test-local", tmp_path)
+    assert model_setup.complete(directory, model)
+    assert not (directory / model_setup.PENDING).exists()
+    assert "100%" in capsys.readouterr().out
+    before = len(calls)
+    monkeypatch.setattr(huggingface_hub.HfApi, "model_info", lambda *args, **kwargs: pytest.fail("Existing model should work offline"))
+    model_setup.prepare("test-local", tmp_path)
+    assert len(calls) == before
+
+
+@pytest.mark.parametrize("failure", ["disk", "revision", "manifest", "unsafe"])
+def test_model_setup_rejects_invalid_download_before_transfer(tmp_path, monkeypatch, failure):
+    from types import SimpleNamespace
+    import huggingface_hub
+    import model_setup
+
+    model = dict(model_setup.MODELS["qwen3-coder-30b-a3b-ov"], weights={"openvino_model.bin": 5})
+    files = {name: 5 for name in model_setup.required_files(model)}
+    if failure == "manifest":
+        files.pop("openvino_model.bin")
+    if failure == "unsafe":
+        files["../outside.bin"] = 5
+    info = SimpleNamespace(sha="wrong" if failure == "revision" else model["revision"],
+                           siblings=[SimpleNamespace(rfilename=name, size=size) for name, size in files.items()])
+    monkeypatch.setattr(huggingface_hub.HfApi, "model_info", lambda *args, **kwargs: info)
+    monkeypatch.setattr(model_setup.shutil, "disk_usage", lambda path: SimpleNamespace(free=0 if failure == "disk" else 10 ** 10))
+    monkeypatch.setattr(huggingface_hub, "hf_hub_download", lambda **kwargs: pytest.fail("Invalid preparation must not download"))
+    with pytest.raises((RuntimeError, ValueError)):
+        model_setup.download(model, tmp_path)
+    assert not (tmp_path / model_setup.RECEIPT).exists()
+
+
+def test_model_setup_blocks_concurrent_preparation(tmp_path, monkeypatch):
+    from filelock import FileLock
+    import model_setup
+
+    model = model_setup.MODELS["qwen3-coder-30b-a3b-ov"]
+    directory = tmp_path / model["directory"]
+    directory.mkdir()
+    monkeypatch.setattr(model_setup, "download", lambda *args: pytest.fail("Concurrent setup must not download"))
+    with FileLock(str(directory / ".workflow-model-setup.lock")):
+        with pytest.raises(RuntimeError, match="Another controller"):
+            model_setup.prepare("qwen3-coder-30b-a3b-ov", tmp_path)
+
+
 def run_controller_powershell(tmp_path, body):
     if os.name != "nt":
         pytest.skip("Controller execution requires Windows")
@@ -64,6 +156,11 @@ foreach ($name in @('profilePaths', 'templatePaths', 'modelNames')) {
 }
 $script:profileRoot = Join-Path $env:CONTROLLER_TEST_TEMP 'profiles'
 New-Item -ItemType Directory -Path $script:profileRoot | Out-Null
+$script:setupProcess = $null
+$script:setupSelection = $null
+$modelPicker = [pscustomobject]@{ Enabled = $true }
+$reportButton = [pscustomobject]@{ Enabled = $true }
+$comparisonButton = [pscustomobject]@{ Enabled = $true }
 function Write-Log { param($message) }
 ''' + body + "\nWrite-Output 'CONTROLLER_TEST_PASSED'\n", encoding="utf-8")
     environment = dict(os.environ, CONTROLLER_TEST_SOURCE=str(bench.ENGINE_ROOT / "demo-controller.ps1"),
@@ -75,6 +172,156 @@ function Write-Log { param($message) }
     )
     assert result.returncode == 0, result.stdout + result.stderr
     assert "CONTROLLER_TEST_PASSED" in result.stdout, result.stdout + result.stderr
+
+
+@pytest.mark.parametrize("exit_code", [0, 7])
+def test_controller_real_preparation_process_preserves_exit_code(tmp_path, exit_code):
+    run_controller_powershell(tmp_path, r'''
+$script:logRoot = $env:CONTROLLER_TEST_TEMP
+$script:launches = 0
+$script:messages = @()
+function Add-WatchedFile($path) { }
+function Read-WatchedFiles { }
+function Write-Log($message) { $script:messages += $message }
+function Get-SelectedModel { [pscustomobject]@{ Profile = [pscustomobject]@{ model = 'qwen3.8-27b-ov' } } }
+function Start-LocalServer($selected) { $script:launches++ }
+foreach ($name in @('Start-TrackedProcess', 'Update-ModelPreparation')) {
+    . ([scriptblock]::Create((Import-ControllerFunction $name)))
+}
+$script:setupSelection = Get-SelectedModel
+$script:setupProcess = Start-TrackedProcess $env:ComSpec '/d /c exit __EXIT_CODE__' $env:CONTROLLER_TEST_TEMP 'real-process'
+try {
+    Assert-That ($script:setupProcess.WaitForExit(15000)) 'Test child did not exit'
+    Assert-That ($script:setupProcess.HasExited) 'Exited child was not detected'
+    $script:setupProcess.Refresh()
+    $actualExit = $script:setupProcess.ExitCode
+    Assert-That ($null -ne $actualExit -and $actualExit -eq __EXIT_CODE__) "Lost real process exit status: [$actualExit]"
+    Update-ModelPreparation
+    Assert-That ($null -eq $script:setupProcess) 'Finished preparation was not cleared'
+    Assert-That ($script:launches -eq __EXPECTED_LAUNCHES__) 'Wrong server handoff for real exit code'
+    Assert-That (-not (($script:messages -join ' ').Contains('(exit )'))) 'Blank exit status logged'
+}
+finally {
+    if ($script:setupProcess -and -not $script:setupProcess.HasExited) { $script:setupProcess.Kill() }
+}
+'''.replace('__EXIT_CODE__', str(exit_code)).replace('__EXPECTED_LAUNCHES__', str(int(exit_code == 0))))
+
+
+@pytest.mark.parametrize("model_id", ["qwen3.8-27b-ov", "OpenVINO/Qwen3-8B-int8-ov", "qwen3-coder-30b-a3b-ov", "qwen38-fable5-int4"])
+def test_controller_model_download_lifecycle(tmp_path, model_id):
+    run_controller_powershell(tmp_path, r'''
+Add-Type -AssemblyName System.Drawing
+Add-Type -TypeDefinition @'
+namespace ControllerTest {
+    public static class MessageBox {
+        public static string Choice = "Yes";
+        public static string LastMessage;
+        public static string Show(string text, string title, string buttons, string icon) {
+            LastMessage = text;
+            return Choice;
+        }
+    }
+}
+'@
+$script:workspaceRoot = Join-Path $env:CONTROLLER_TEST_TEMP 'shared laptop workspace'
+$script:engineRoot = Join-Path $script:workspaceRoot 'dependency-migration'
+$script:modelRoot = Join-Path $script:workspaceRoot 'models'
+$script:ovmsRoot = Join-Path $script:workspaceRoot 'ovms'
+$script:runnerPython = Join-Path $script:engineRoot 'runner python.exe'
+foreach ($directory in @($script:engineRoot, $script:modelRoot, $script:ovmsRoot)) {
+    New-Item -ItemType Directory -Force -Path $directory | Out-Null
+}
+foreach ($path in @($script:runnerPython, (Join-Path $script:engineRoot 'model_setup.py'), (Join-Path $script:ovmsRoot 'setupvars.bat'), (Join-Path $script:ovmsRoot 'ovms.exe'))) {
+    [System.IO.File]::WriteAllText($path, 'test sentinel; never execute')
+}
+$script:selectedModel = '__MODEL_ID__'
+$script:selectedProvider = 'local'
+$script:taskProcess = $null
+$script:serverProcess = $null
+$script:serverReady = $false
+$script:warmupReady = $false
+$script:downloads = 0
+$script:launches = 0
+$script:kills = 0
+$script:logs = @()
+function Write-Log($message) { $script:logs += $message }
+function Get-SelectedModel { [pscustomobject]@{ Name = 'selected local model'; Profile = [pscustomobject]@{ provider = $script:selectedProvider; model = $script:selectedModel } } }
+function Test-Port8000 { $false }
+function Read-WatchedFiles { }
+function Start-TrackedProcess($FileName, $Arguments, $WorkingDirectory, $Tag) {
+    Assert-That ($FileName -eq $script:runnerPython -and $Tag -eq 'model-download') 'Wrong setup executable or tag'
+    Assert-That ($Arguments.Contains(('"' + (Join-Path $script:engineRoot 'model_setup.py') + '"')) -and $Arguments.Contains(('"' + $script:modelRoot + '"')) -and $Arguments.Contains($script:selectedModel)) 'Missing quoted setup arguments'
+    Assert-That ($WorkingDirectory -eq $script:workspaceRoot) 'Wrong setup working directory'
+    $script:downloads++
+    $process = [pscustomobject]@{ Id = 22222; HasExited = $false; ExitCode = 0 }
+    $process | Add-Member ScriptMethod Refresh { }
+    $process
+}
+function Start-LocalServer($selected) {
+    Assert-That ($selected.Profile.model -eq $script:selectedModel) 'Started a different selection'
+    $script:launches++
+}
+function Start-Process { param($FilePath, $ArgumentList, $WindowStyle, [switch]$Wait, [switch]$PassThru)
+    Assert-That ($FilePath -eq 'taskkill.exe' -and $ArgumentList -eq '/PID 22222 /T /F' -and $Wait -and $PassThru) 'Wrong cancellation target'
+    $script:kills++
+    [pscustomobject]@{ ExitCode = 0 }
+}
+foreach ($name in @('apiKeyButton', 'startButton', 'stopButton', 'warmupButton', 'runButton')) {
+    Set-Variable -Name $name -Value ([pscustomobject]@{ Enabled = $true; Text = '' })
+}
+$apiStatus = [pscustomobject]@{ Text = ''; ForeColor = $null }
+$serverStatus = [pscustomobject]@{ Text = ''; ForeColor = $null }
+$timer = [pscustomobject]@{ Stopped = $false }
+$timer | Add-Member ScriptMethod Stop { $this.Stopped = $true }
+foreach ($name in @('Update-Status', 'Update-ModelPreparation', 'Stop-ModelPreparation')) {
+    . ([scriptblock]::Create((Import-ControllerFunction $name)))
+}
+$start = Get-ControllerHandler 'startButton' 'Add_Click'
+$stop = Get-ControllerHandler 'stopButton' 'Add_Click'
+$closing = Get-ControllerHandler 'form' 'Add_FormClosing'
+& $start
+Assert-That ($script:downloads -eq 1 -and $script:launches -eq 0) 'Start launched server before setup'
+Assert-That (-not $modelPicker.Enabled -and -not $runButton.Enabled -and -not $warmupButton.Enabled -and -not $startButton.Enabled -and -not $reportButton.Enabled -and -not $comparisonButton.Enabled) 'Setup allowed overlapping operations'
+Assert-That ($stopButton.Enabled -and $stopButton.Text -eq 'Cancel download') 'Download cannot be canceled'
+Assert-That (($script:logs -join ' ').Contains('Please wait')) 'Missing wait/download log message'
+& $start
+Assert-That ($script:downloads -eq 1) 'Duplicate setup started'
+Update-ModelPreparation
+Assert-That ($script:launches -eq 0) 'Running setup launched server'
+$script:setupProcess.HasExited = $true
+Update-ModelPreparation
+Update-ModelPreparation
+Assert-That ($script:launches -eq 1 -and $null -eq $script:setupProcess -and $null -eq $script:setupSelection) 'Successful setup did not launch exactly once'
+Update-Status
+Assert-That ($modelPicker.Enabled) 'Picker stayed locked after setup'
+& $start
+$script:setupProcess.HasExited = $true
+$script:setupProcess.ExitCode = 1
+Update-ModelPreparation
+Assert-That ($script:launches -eq 1 -and $null -eq $script:setupProcess) 'Failed setup launched a server'
+& $start
+& $stop
+Update-ModelPreparation
+Assert-That ($script:kills -eq 1 -and $null -eq $script:setupProcess -and $script:launches -eq 1) 'Canceled setup launched or leaked state'
+& $start
+$script:selectedModel = 'changed-selection'
+$script:setupProcess.HasExited = $true
+Update-ModelPreparation
+Assert-That ($script:launches -eq 1) 'Completion reused stale selection'
+$script:selectedModel = '__MODEL_ID__'
+& $start
+[ControllerTest.MessageBox]::Choice = 'No'
+$closingEvent = [pscustomobject]@{ Cancel = $false }
+$closingEvent | ForEach-Object $closing
+Assert-That ($closingEvent.Cancel -and $null -ne $script:setupProcess -and -not $timer.Stopped) 'Close ignored pending download'
+[ControllerTest.MessageBox]::Choice = 'Yes'
+$closingEvent | ForEach-Object $closing
+Assert-That ($null -eq $script:setupProcess -and $script:kills -eq 2 -and $timer.Stopped) 'Close did not cancel preparation'
+$before = $script:downloads
+$script:selectedProvider = 'openai'
+& $start
+Assert-That ($script:downloads -eq $before -and $script:launches -eq 1) 'Cloud choice started a model download'
+'''.replace('__MODEL_ID__', model_id))
 
 
 def test_controller_local_choices_copy_coder_and_fable_templates(tmp_path):
@@ -116,7 +363,7 @@ function Get-SelectedModel { [pscustomobject]@{ Profile = [pscustomobject]@{ pro
 function Read-WatchedFiles { }
 function Test-Port8000 { throw 'Owned-server readiness must not probe the port' }
 foreach ($name in @('apiKeyButton', 'startButton', 'stopButton', 'warmupButton', 'runButton')) {
-    Set-Variable -Name $name -Value ([pscustomobject]@{ Enabled = $true })
+    Set-Variable -Name $name -Value ([pscustomobject]@{ Enabled = $true; Text = '' })
 }
 $apiStatus = [pscustomobject]@{ Text = ''; ForeColor = $null }
 $serverStatus = [pscustomobject]@{ Text = ''; ForeColor = $null }
@@ -167,6 +414,7 @@ function Test-Port8000 { $false }
 function Update-Status { }
 function Read-WatchedFiles { }
 function Update-ThroughputStatus { }
+function Update-ModelPreparation { }
 function Start-TrackedProcess($FileName, $Arguments, $WorkingDirectory, $Tag) {
     $script:started += [pscustomobject]@{ FileName = $FileName; Arguments = $Arguments; WorkingDirectory = $WorkingDirectory; Tag = $Tag }
     [pscustomobject]@{ Id = 12345; HasExited = $false; ExitCode = 0 }
@@ -182,7 +430,7 @@ $script:logRoot = Join-Path $script:workspaceRoot 'logs'
 foreach ($directory in @($script:modelRoot, $script:ovmsRoot, $script:logRoot)) {
     New-Item -ItemType Directory -Path $directory | Out-Null
 }
-foreach ($relative in @('start-27b-article.cmd', 'start-qwen3-coder-30b.cmd', 'start-qwen38-fable5-coding-27b.cmd', 'morteza89-qwen3.8-27b-int4-ov\openvino_language_model.xml', 'qwen3-coder-30b-a3b-int4-ov\openvino_model.xml', 'qwen3.8-27b-fable-5-coding-distilled-int4-ov\openvino_language_model.xml', 'qwen3-8b-int8\graph.pbtxt', 'migration-ovms.json')) {
+foreach ($relative in @('start-27b-article.cmd', 'start-qwen3-coder-30b.cmd', 'start-qwen38-fable5-coding-27b.cmd', 'morteza89-qwen3.8-27b-int4-ov\openvino_language_model.xml', 'qwen3-coder-30b-a3b-int4-ov\openvino_model.xml', 'qwen3.8-27b-fable-5-coding-distilled-int4-ov\openvino_language_model.xml', 'qwen3-8b-int8\openvino_model.xml')) {
     $path = Join-Path $script:modelRoot $relative
     New-Item -ItemType Directory -Force -Path (Split-Path $path) | Out-Null
     [System.IO.File]::WriteAllText($path, 'test-only sentinel; never execute')
@@ -190,7 +438,8 @@ foreach ($relative in @('start-27b-article.cmd', 'start-qwen3-coder-30b.cmd', 's
 foreach ($relative in @('setupvars.bat', 'ovms.exe')) {
     [System.IO.File]::WriteAllText((Join-Path $script:ovmsRoot $relative), 'test-only sentinel; never execute')
 }
-$start = Get-ControllerHandler 'startButton' 'Add_Click'
+. ([scriptblock]::Create((Import-ControllerFunction 'Start-LocalServer')))
+$start = { Start-LocalServer (Get-SelectedModel) }
 $stop = Get-ControllerHandler 'stopButton' 'Add_Click'
 $tick = Get-ControllerHandler 'timer' 'Add_Tick'
 $script:taskProcess = $null
@@ -229,9 +478,10 @@ Assert-That ($script:stopCalls -eq 4) 'Stop did not use mocked process terminati
 Remove-Item -LiteralPath $wrapper
 $script:selectedModel = 'unknown-local-model'
 $script:started = @()
-& $start
+$unknownError = $null
+try { & $start } catch { $unknownError = $_.Exception.Message }
 Assert-That ($script:started.Count -eq 0 -and -not (Test-Path $wrapper)) 'Unknown model fell back to a launcher'
-Assert-That ([ControllerTest.MessageBox]::LastMessage -eq 'No local launcher is registered for unknown-local-model.') 'Unknown model did not report explicit rejection'
+Assert-That ($unknownError -eq 'No local launcher is registered for unknown-local-model.') 'Unknown model did not report explicit rejection'
 Assert-That ($null -eq $script:serverProcess -and $null -eq $script:serverModel) 'Unknown model acquired server ownership'
 ''')
 

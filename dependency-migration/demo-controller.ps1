@@ -27,6 +27,8 @@ $script:reportTitle = switch ($Workflow) { 'security-repair' { 'Security Repair 
 $script:timeBudgetLabel = '{0}-minute' -f ($script:deadlineSeconds / 60)
 $script:serverProcess = $null
 $script:serverModel = $null
+$script:setupProcess = $null
+$script:setupSelection = $null
 $script:taskProcess = $null
 $script:serverReady = $false
 $script:warmupReady = $false
@@ -342,6 +344,22 @@ function Read-WatchedFiles {
 
 function Update-Status {
     $selected = Get-SelectedModel
+    $modelPicker.Enabled = -not ($script:setupProcess -or $script:taskProcess)
+    $comparisonButton.Enabled = -not $script:setupProcess
+    $reportButton.Enabled = -not $script:setupProcess
+    $stopButton.Text = 'Stop local model'
+    if ($script:setupProcess) {
+        $serverStatus.Text = 'Model: preparing/downloading files; see log'
+        $serverStatus.ForeColor = [System.Drawing.Color]::DarkOrange
+        $apiStatus.Text = 'Model preparation is outside the task budget'
+        $apiKeyButton.Enabled = $false
+        $startButton.Enabled = $false
+        $warmupButton.Enabled = $false
+        $runButton.Enabled = $false
+        $stopButton.Text = 'Cancel download'
+        $stopButton.Enabled = $true
+        return
+    }
     $apiKeyButton.Enabled = $selected.Profile.provider -eq 'openai' -and -not $script:taskProcess
     if ($selected.Profile.provider -eq 'openai') {
         if ([string]::IsNullOrWhiteSpace($env:OPENAI_API_KEY)) {
@@ -406,18 +424,17 @@ function Update-Status {
 }
 
 function Start-TrackedProcess([string]$FileName, [string]$Arguments, [string]$WorkingDirectory, [string]$Tag) {
-    $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+    $stamp = (Get-Date -Format 'yyyyMMdd-HHmmss-fff') + '-' + [guid]::NewGuid().ToString('N').Substring(0, 6)
     $stdout = Join-Path $script:logRoot "$Tag-$stamp.out.log"
     $stderr = Join-Path $script:logRoot "$Tag-$stamp.err.log"
     $process = Start-Process -FilePath $FileName -ArgumentList $Arguments -WorkingDirectory $WorkingDirectory -PassThru -WindowStyle Hidden -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+    $null = $process.Handle
     Add-WatchedFile $stdout
     Add-WatchedFile $stderr
     return $process
 }
 
-$startButton.Add_Click({
-    try {
-        $selected = Get-SelectedModel
+function Start-LocalServer($selected) {
         if ($selected.Profile.provider -ne 'local') { throw 'The selected model does not use a local server.' }
         if (Test-Port8000) { throw 'Port 8000 is already in use. Stop the existing model server before starting another.' }
         $wrapper = Join-Path $script:logRoot 'start-local-model.cmd'
@@ -442,10 +459,10 @@ $startButton.Add_Click({
         elseif ($selected.Profile.model -eq 'OpenVINO/Qwen3-8B-int8-ov') {
             $setupvars = Join-Path $script:ovmsRoot 'setupvars.bat'
             $ovms = Join-Path $script:ovmsRoot 'ovms.exe'
-            $modelFile = Join-Path $script:modelRoot 'qwen3-8b-int8\graph.pbtxt'
-            $config = Join-Path $script:modelRoot 'migration-ovms.json'
-            if (-not (Test-Path $setupvars) -or -not (Test-Path $ovms) -or -not (Test-Path $modelFile) -or -not (Test-Path $config)) { throw '8B weights, graph, config, or OVMS runtime are missing. Follow the setup steps in MODELS.md first.' }
-            $lines = @('@echo off', "call `"$setupvars`"", 'if errorlevel 1 exit /b 1', "`"$ovms`" --config_path `"$config`" --rest_bind_address 127.0.0.1 --rest_port 8000 --idle_unload_timeout_seconds 0")
+            $modelDirectory = Join-Path $script:modelRoot 'qwen3-8b-int8'
+            $modelFile = Join-Path $modelDirectory 'openvino_model.xml'
+            if (-not (Test-Path $setupvars) -or -not (Test-Path $ovms) -or -not (Test-Path $modelFile)) { throw '8B weights or OVMS runtime are missing. Follow the runtime setup steps in MODELS.md first.' }
+            $lines = @('@echo off', 'set "API_KEY="', 'set "PYTHONHOME="', 'set "PYTHONPATH="', 'set "VIRTUAL_ENV="', "call `"$setupvars`"", 'if errorlevel 1 exit /b 1', "`"$ovms`" --model_name OpenVINO/Qwen3-8B-int8-ov --model_path `"$modelDirectory`" --task text_generation --target_device GPU --max_num_seqs 1 --cache_size 2 --enable_prefix_caching false --tool_parser none --reasoning_parser qwen3 --rest_bind_address 127.0.0.1 --rest_port 8000 --idle_unload_timeout_seconds 0")
             [System.IO.File]::WriteAllLines($wrapper, $lines, [System.Text.Encoding]::ASCII)
         }
         else { throw "No local launcher is registered for $($selected.Profile.model)." }
@@ -455,12 +472,69 @@ $startButton.Add_Click({
         $script:serverProcess = Start-TrackedProcess $env:ComSpec ("/d /c call `"$wrapper`"") $workingDirectory 'server'
         $script:serverModel = $selected.Profile.model
         Write-Log "Started $($selected.Name); wait for AVAILABLE in the server log."
+}
+
+function Stop-ModelPreparation {
+    if ($script:setupProcess -and -not $script:setupProcess.HasExited) {
+        $stopped = Start-Process -FilePath 'taskkill.exe' -ArgumentList "/PID $($script:setupProcess.Id) /T /F" -WindowStyle Hidden -Wait -PassThru
+        if ($stopped.ExitCode -ne 0 -and -not $script:setupProcess.HasExited) { throw 'Could not stop model preparation. Keep this window open and retry cancellation.' }
+    }
+    $script:setupProcess = $null
+    $script:setupSelection = $null
+    $script:serverReady = $false
+    $script:warmupReady = $false
+    Write-Log 'Model preparation canceled. Downloaded data is retained; Start selected local model will resume preparation.'
+}
+
+function Update-ModelPreparation {
+    if (-not $script:setupProcess -or -not $script:setupProcess.HasExited) { return }
+    $script:setupProcess.Refresh()
+    $exitCode = $script:setupProcess.ExitCode
+    $selected = $script:setupSelection
+    $script:setupProcess = $null
+    $script:setupSelection = $null
+    Read-WatchedFiles
+    if ($null -eq $exitCode -or $exitCode -ne 0) {
+        Write-Log "Model preparation failed (exit $exitCode). No server or pilot was started. Review the download log and click Start selected local model to retry."
+        return
+    }
+    try {
+        if ((Get-SelectedModel).Profile.model -ne $selected.Profile.model) { throw 'Selection changed during preparation. Start the desired model again.' }
+        Write-Log 'Model files are ready. Starting the local server; wait for AVAILABLE before running a pilot.'
+        Start-LocalServer $selected
+    }
+    catch { Write-Log "Could not start the prepared model: $($_.Exception.Message)" }
+}
+
+$startButton.Add_Click({
+    try {
+        $selected = Get-SelectedModel
+        if ($script:setupProcess -or $script:taskProcess -or ($script:serverProcess -and -not $script:serverProcess.HasExited)) { throw 'Wait for the active operation or stop the local server first.' }
+        if ($selected.Profile.provider -ne 'local') { throw 'The selected model does not use a local server.' }
+        if ($selected.Profile.model -notin @('qwen3.8-27b-ov', 'OpenVINO/Qwen3-8B-int8-ov', 'qwen3-coder-30b-a3b-ov', 'qwen38-fable5-int4')) { throw "No local launcher is registered for $($selected.Profile.model)." }
+        if (Test-Port8000) { throw 'Port 8000 is already in use. Stop the existing model server before starting another.' }
+        $helper = Join-Path $script:engineRoot 'model_setup.py'
+        if (-not (Test-Path $script:runnerPython) -or -not (Test-Path $helper)) { throw 'The locked runner or model setup helper is missing. Complete the runner setup first.' }
+        if (-not (Test-Path (Join-Path $script:ovmsRoot 'setupvars.bat')) -or -not (Test-Path (Join-Path $script:ovmsRoot 'ovms.exe'))) { throw 'OVMS runtime is missing. Complete the runtime setup in MODELS.md before downloading model weights.' }
+        $script:serverReady = $false
+        $script:warmupReady = $false
+        Write-Log "Preparing $($selected.Name). Existing complete files will be reused; missing files download automatically from the pinned Hugging Face revision."
+        Write-Log 'Please wait for model preparation to finish. Download progress appears below; large models may take several minutes or longer.'
+        $arguments = '-u "{0}" --model "{1}" --models-root "{2}"' -f $helper, $selected.Profile.model, $script:modelRoot
+        $script:setupProcess = Start-TrackedProcess $script:runnerPython $arguments $script:workspaceRoot 'model-download'
+        $script:setupSelection = $selected
     }
     catch { [System.Windows.Forms.MessageBox]::Show($_.Exception.Message, 'Could not start server', 'OK', 'Warning') | Out-Null }
     Update-Status
 })
 
 $stopButton.Add_Click({
+    if ($script:setupProcess) {
+        try { Stop-ModelPreparation }
+        catch { Write-Log $_.Exception.Message }
+        Update-Status
+        return
+    }
     if ($script:serverProcess -and -not $script:serverProcess.HasExited) {
         $confirm = [System.Windows.Forms.MessageBox]::Show('Stop the local model server started by this controller?', 'Stop server', 'YesNo', 'Question')
         if ($confirm -eq 'Yes') {
@@ -518,6 +592,7 @@ $warmupButton.Add_Click({
 
 $runButton.Add_Click({
     try {
+        if ($script:setupProcess) { throw 'Wait for model preparation to finish before running a pilot.' }
         $selected = Get-SelectedModel
         if ($selected.Profile.provider -eq 'local' -and -not ($script:serverReady -or $script:warmupReady)) { throw 'Start the selected local server and pass Test connection first.' }
         if ($selected.Profile.provider -eq 'openai' -and [string]::IsNullOrWhiteSpace($env:OPENAI_API_KEY)) { throw 'OPENAI_API_KEY is not set in the PowerShell process that launched this controller.' }
@@ -545,6 +620,7 @@ $openButton.Add_Click({
 $apiKeyButton.Add_Click({ Show-OpenAIKeyDialog })
 
 $reportButton.Add_Click({
+    if ($script:setupProcess) { Write-Log 'Wait for model preparation to finish before refreshing reports.'; return }
     if ($script:taskProcess -and -not $script:taskProcess.HasExited) { Write-Log 'Wait for the active attempt to finish before refreshing the report.'; return }
     $quoted = @($script:benchScript, 'report') | ForEach-Object { '"' + $_ + '"' }
     $script:taskProcess = Start-TrackedProcess $script:runnerPython ($quoted -join ' ') $script:workflowRoot 'report'
@@ -553,6 +629,7 @@ $reportButton.Add_Click({
 })
 
 $comparisonButton.Add_Click({
+    if ($script:setupProcess) { Write-Log 'Wait for model preparation to finish before generating a comparison.'; return }
     if ($script:taskProcess -and -not $script:taskProcess.HasExited) { Write-Log 'Wait for the active task to finish before generating the comparison.'; return }
     $reportPath = Join-Path $script:artifactRoot ('comparison-report-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '.md')
     $args = @($script:reportScript, '--directory', $script:artifactRoot, '--freeze', $script:freezePath, '--output', $reportPath, '--title', $script:reportTitle)
@@ -574,6 +651,7 @@ $timer = New-Object System.Windows.Forms.Timer
 $timer.Interval = 700
 $timer.Add_Tick({
     Read-WatchedFiles
+    Update-ModelPreparation
     if ($script:serverProcess -and $script:serverProcess.HasExited) {
         Write-Log "Server process exited with code $($script:serverProcess.ExitCode)."
         $script:serverProcess = $null
@@ -601,6 +679,12 @@ $timer.Add_Tick({
 })
 
 $form.Add_FormClosing({
+    if ($script:setupProcess) {
+        $choice = [System.Windows.Forms.MessageBox]::Show('Cancel model preparation and close? Downloaded data will be kept for retry.', 'Model download active', 'YesNo', 'Question')
+        if ($choice -ne 'Yes') { $_.Cancel = $true; return }
+        try { Stop-ModelPreparation }
+        catch { Write-Log $_.Exception.Message; $_.Cancel = $true; return }
+    }
     if ($script:serverProcess -and -not $script:serverProcess.HasExited) {
         $choice = [System.Windows.Forms.MessageBox]::Show('A local server started by this controller is still running. Stop it before closing?', 'Local server running', 'YesNoCancel', 'Question')
         if ($choice -eq 'Cancel') { $_.Cancel = $true; return }
