@@ -17,7 +17,7 @@ $script:ovmsRoot = Join-Path $script:workspaceRoot 'ovms_downloaded\windows-2026
 $script:runnerPython = Join-Path $script:engineRoot '.venv-runner\Scripts\python.exe'
 $script:benchScript = Join-Path $script:workflowRoot 'bench.py'
 $script:reportScript = Join-Path $script:engineRoot 'comparison_report.py'
-$script:freezeName = if ($Workflow -eq 'dependency-migration') { 'freeze-600s-v9.json' } else { (Get-Content -Raw (Join-Path $script:workflowRoot 'workflow.json') | ConvertFrom-Json).default_freeze }
+$script:freezeName = if ($Workflow -eq 'dependency-migration') { 'freeze-600s-v10.json' } else { (Get-Content -Raw (Join-Path $script:workflowRoot 'workflow.json') | ConvertFrom-Json).default_freeze }
 $script:freezePath = Join-Path $script:workflowRoot ('artifacts\' + $script:freezeName)
 $script:deadlineSeconds = (Get-Content -Raw (Join-Path $script:workflowRoot 'policy.json') | ConvertFrom-Json).deadline_seconds
 $script:artifactRoot = Join-Path $script:workflowRoot 'artifacts'
@@ -26,6 +26,7 @@ $script:workflowTitle = switch ($Workflow) { 'security-repair' { 'Security Repai
 $script:reportTitle = switch ($Workflow) { 'security-repair' { 'Security Repair Comparison' } 'regression-tests' { 'Regression Tests Comparison' } default { 'Dependency Migration Comparison' } }
 $script:timeBudgetLabel = '{0}-minute' -f ($script:deadlineSeconds / 60)
 $script:serverProcess = $null
+$script:serverModel = $null
 $script:taskProcess = $null
 $script:serverReady = $false
 $script:warmupReady = $false
@@ -35,19 +36,22 @@ $script:profilePaths = @(
     'ptl-morteza89-27b.private.json',
     'ptl-8b.private.json',
     'ptl-openai.private.json',
-    'ptl-openai-astra.private.json'
+    'ptl-openai-astra.private.json',
+    'ptl-qwen3-coder-30b.private.json'
 )
 $script:templatePaths = @(
     'article-27b.json',
     'local-8b.json',
     'openai.json',
-    'openai-astra.json'
+    'openai-astra.json',
+    'qwen3-coder-30b.json'
 )
 $script:modelNames = @(
     'Qwen3.8 27B INT4 (local)',
     'Qwen3 8B INT8 (local)',
     'GPT-6.1 Sol (OpenAI API)',
-    'GPT-6 Astra (OpenAI API)'
+    'GPT-6 Astra (OpenAI API)',
+    'Qwen3-Coder 30B-A3B INT4 (local)'
 )
 
 New-Item -ItemType Directory -Force -Path $script:logRoot | Out-Null
@@ -358,6 +362,15 @@ function Update-Status {
     $apiStatus.ForeColor = [System.Drawing.Color]::DimGray
     Read-WatchedFiles
     if ($script:serverProcess -and -not $script:serverProcess.HasExited) {
+        if ($script:serverModel -ne $selected.Profile.model) {
+            $serverStatus.Text = "Server: running $script:serverModel; stop it before switching models"
+            $serverStatus.ForeColor = [System.Drawing.Color]::DarkOrange
+            $stopButton.Enabled = -not $script:taskProcess
+            $startButton.Enabled = $false
+            $warmupButton.Enabled = $false
+            $runButton.Enabled = $false
+            return
+        }
         if ($script:serverReady) {
             $serverStatus.Text = 'Server: AVAILABLE'
             $serverStatus.ForeColor = [System.Drawing.Color]::DarkGreen
@@ -411,7 +424,13 @@ $startButton.Add_Click({
             if (-not (Test-Path $launcher) -or -not (Test-Path $modelFile)) { throw 'The pinned 27B launcher or model files are missing; see MODELS.md.' }
             [System.IO.File]::WriteAllText($wrapper, "@echo off`r`ncall `"$launcher`"`r`n", [System.Text.Encoding]::ASCII)
         }
-        else {
+        elseif ($selected.Profile.model -eq 'qwen3-coder-30b-a3b-ov') {
+            $launcher = Join-Path $script:modelRoot 'start-qwen3-coder-30b.cmd'
+            $modelFile = Join-Path $script:modelRoot 'qwen3-coder-30b-a3b-int4-ov\openvino_model.xml'
+            if (-not (Test-Path $launcher) -or -not (Test-Path $modelFile)) { throw 'The pinned Qwen3-Coder launcher or model files are missing; see README.md.' }
+            [System.IO.File]::WriteAllText($wrapper, "@echo off`r`ncall `"$launcher`"`r`n", [System.Text.Encoding]::ASCII)
+        }
+        elseif ($selected.Profile.model -eq 'OpenVINO/Qwen3-8B-int8-ov') {
             $setupvars = Join-Path $script:ovmsRoot 'setupvars.bat'
             $ovms = Join-Path $script:ovmsRoot 'ovms.exe'
             $modelFile = Join-Path $script:modelRoot 'qwen3-8b-int8\graph.pbtxt'
@@ -420,10 +439,12 @@ $startButton.Add_Click({
             $lines = @('@echo off', "call `"$setupvars`"", 'if errorlevel 1 exit /b 1', "`"$ovms`" --config_path `"$config`" --rest_bind_address 127.0.0.1 --rest_port 8000 --idle_unload_timeout_seconds 0")
             [System.IO.File]::WriteAllLines($wrapper, $lines, [System.Text.Encoding]::ASCII)
         }
-        $workingDirectory = if ($selected.Profile.model -eq 'qwen3.8-27b-ov') { $script:workspaceRoot } else { $script:ovmsRoot }
+        else { throw "No local launcher is registered for $($selected.Profile.model)." }
+        $workingDirectory = if ($selected.Profile.model -eq 'OpenVINO/Qwen3-8B-int8-ov') { $script:ovmsRoot } else { $script:workspaceRoot }
         $script:serverReady = $false
         $script:warmupReady = $false
         $script:serverProcess = Start-TrackedProcess $env:ComSpec ("/d /c call `"$wrapper`"") $workingDirectory 'server'
+        $script:serverModel = $selected.Profile.model
         Write-Log "Started $($selected.Name); wait for AVAILABLE in the server log."
     }
     catch { [System.Windows.Forms.MessageBox]::Show($_.Exception.Message, 'Could not start server', 'OK', 'Warning') | Out-Null }
@@ -436,6 +457,7 @@ $stopButton.Add_Click({
         if ($confirm -eq 'Yes') {
             Start-Process -FilePath 'taskkill.exe' -ArgumentList "/PID $($script:serverProcess.Id) /T /F" -WindowStyle Hidden -Wait | Out-Null
             $script:serverProcess = $null
+            $script:serverModel = $null
             $script:serverReady = $false
             $script:warmupReady = $false
             Write-Log 'Stopped the local model server process tree.'
@@ -546,6 +568,7 @@ $timer.Add_Tick({
     if ($script:serverProcess -and $script:serverProcess.HasExited) {
         Write-Log "Server process exited with code $($script:serverProcess.ExitCode)."
         $script:serverProcess = $null
+        $script:serverModel = $null
         $script:serverReady = $false
     }
     if ($script:taskProcess -and $script:taskProcess.HasExited) {

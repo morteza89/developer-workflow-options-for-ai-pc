@@ -12,6 +12,237 @@ import comparison_report
 import qualify
 
 
+def run_controller_powershell(tmp_path, body):
+    if os.name != "nt":
+        pytest.skip("Controller execution requires Windows")
+    windows_powershell = Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32/WindowsPowerShell/v1.0/powershell.exe"
+    executable = str(windows_powershell) if windows_powershell.is_file() else shutil.which("powershell.exe") or shutil.which("pwsh.exe")
+    assert executable, "PowerShell is required on Windows"
+    script = tmp_path / "controller-test.ps1"
+    script.write_text(r'''
+$ErrorActionPreference = 'Stop'
+Set-StrictMode -Version Latest
+$tokens = $null
+$parseErrors = $null
+$controller = [System.Management.Automation.Language.Parser]::ParseFile($env:CONTROLLER_TEST_SOURCE, [ref]$tokens, [ref]$parseErrors)
+if ($parseErrors.Count) { throw ($parseErrors | Out-String) }
+function Assert-That($condition, [string]$message) {
+    if (-not $condition) { throw $message }
+}
+function Import-ControllerFunction([string]$name) {
+    $matches = @($controller.FindAll({ param($node)
+        $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name
+    }, $true))
+    Assert-That ($matches.Count -eq 1) "Expected one function: $name"
+    $matches[0].Extent.Text
+}
+function Get-ControllerHandler([string]$owner, [string]$event) {
+    $matches = @($controller.FindAll({ param($node)
+        $node -is [System.Management.Automation.Language.InvokeMemberExpressionAst] -and
+        $node.Expression.Extent.Text -eq ('$' + $owner) -and $node.Member.Value -eq $event
+    }, $true))
+    Assert-That ($matches.Count -eq 1) "Expected one handler: $owner.$event"
+    $handler = $matches[0].Arguments[0].ScriptBlock
+    $text = $handler.Extent.Text
+    $types = @($handler.FindAll({ param($node)
+        $node -is [System.Management.Automation.Language.TypeExpressionAst] -and
+        $node.TypeName.FullName -eq 'System.Windows.Forms.MessageBox'
+    }, $true) | Sort-Object { $_.Extent.StartOffset } -Descending)
+    foreach ($type in $types) {
+        $offset = $type.Extent.StartOffset - $handler.Extent.StartOffset
+        $text = $text.Remove($offset, $type.Extent.Text.Length).Insert($offset, '[ControllerTest.MessageBox]')
+    }
+    [scriptblock]::Create($text.Substring(1, $text.Length - 2))
+}
+foreach ($name in @('profilePaths', 'templatePaths', 'modelNames')) {
+    $assignments = @($controller.FindAll({ param($node)
+        $node -is [System.Management.Automation.Language.AssignmentStatementAst] -and
+        $node.Left.Extent.Text -eq ('$script:' + $name)
+    }, $true))
+    Assert-That ($assignments.Count -eq 1) "Expected one array: $name"
+    . ([scriptblock]::Create($assignments[0].Extent.Text))
+}
+$script:profileRoot = Join-Path $env:CONTROLLER_TEST_TEMP 'profiles'
+New-Item -ItemType Directory -Path $script:profileRoot | Out-Null
+function Write-Log { param($message) }
+''' + body + "\nWrite-Output 'CONTROLLER_TEST_PASSED'\n", encoding="utf-8")
+    environment = dict(os.environ, CONTROLLER_TEST_SOURCE=str(bench.ENGINE_ROOT / "demo-controller.ps1"),
+                       CONTROLLER_TEST_TEMP=str(tmp_path))
+    environment.pop("PSModulePath", None)
+    result = subprocess.run(
+        [executable, "-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", str(script)],
+        cwd=tmp_path, env=environment, capture_output=True, text=True, timeout=45,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "CONTROLLER_TEST_PASSED" in result.stdout, result.stdout + result.stderr
+
+
+def test_controller_fifth_choice_copies_coder_template_only(tmp_path):
+    run_controller_powershell(tmp_path, r'''
+Assert-That (($script:profilePaths -join '|') -ceq 'ptl-morteza89-27b.private.json|ptl-8b.private.json|ptl-openai.private.json|ptl-openai-astra.private.json|ptl-qwen3-coder-30b.private.json') 'Private profile choices are not aligned'
+Assert-That (($script:templatePaths -join '|') -ceq 'article-27b.json|local-8b.json|openai.json|openai-astra.json|qwen3-coder-30b.json') 'Template choices are not aligned'
+Assert-That (($script:modelNames -join '|') -ceq 'Qwen3.8 27B INT4 (local)|Qwen3 8B INT8 (local)|GPT-6.1 Sol (OpenAI API)|GPT-6 Astra (OpenAI API)|Qwen3-Coder 30B-A3B INT4 (local)') 'Display choices are not aligned'
+$template = Join-Path $script:profileRoot $script:templatePaths[4]
+$source = Join-Path (Split-Path $env:CONTROLLER_TEST_SOURCE) ('profiles\' + $script:templatePaths[4])
+Copy-Item -LiteralPath $source -Destination $template
+$modelPicker = [pscustomobject]@{ SelectedIndex = 4 }
+. ([scriptblock]::Create((Import-ControllerFunction 'Get-SelectedModel')))
+$selected = Get-SelectedModel
+Assert-That ($selected.Index -eq 4 -and $selected.Name -ceq $script:modelNames[4]) 'Wrong fifth selection'
+Assert-That ($selected.Path -eq (Join-Path $script:profileRoot $script:profilePaths[4])) 'Profile escaped temporary root'
+Assert-That ($selected.Profile.provider -eq 'local' -and $selected.Profile.model -ceq 'qwen3-coder-30b-a3b-ov') 'Wrong copied model'
+Assert-That ($selected.Profile.inference.model_revision -ceq '21140c68a63012da511fe50656319e00be2f6542') 'Wrong copied revision'
+Assert-That ([Convert]::ToBase64String([System.IO.File]::ReadAllBytes($template)) -ceq [Convert]::ToBase64String([System.IO.File]::ReadAllBytes($selected.Path))) 'Private copy differs from template'
+[System.IO.File]::WriteAllText($selected.Path, '{"provider":"local","model":"private-sentinel"}')
+$again = Get-SelectedModel
+Assert-That ($again.Profile.model -ceq 'private-sentinel') 'Existing private profile was overwritten'
+Assert-That (@(Get-ChildItem $script:profileRoot -File).Count -eq 2) 'Unexpected profile files created'
+''')
+
+
+def test_controller_owned_model_mismatch_blocks_stale_readiness(tmp_path):
+    run_controller_powershell(tmp_path, r'''
+Add-Type -AssemblyName System.Drawing
+. ([scriptblock]::Create((Import-ControllerFunction 'Update-Status')))
+function Get-SelectedModel { [pscustomobject]@{ Profile = [pscustomobject]@{ provider = 'local'; model = $script:selectedModel } } }
+function Read-WatchedFiles { }
+function Test-Port8000 { throw 'Owned-server readiness must not probe the port' }
+foreach ($name in @('apiKeyButton', 'startButton', 'stopButton', 'warmupButton', 'runButton')) {
+    Set-Variable -Name $name -Value ([pscustomobject]@{ Enabled = $true })
+}
+$apiStatus = [pscustomobject]@{ Text = ''; ForeColor = $null }
+$serverStatus = [pscustomobject]@{ Text = ''; ForeColor = $null }
+$script:serverProcess = [pscustomobject]@{ HasExited = $false }
+$models = @('qwen3.8-27b-ov', 'qwen3-coder-30b-a3b-ov')
+foreach ($ownedModel in $models) {
+    $script:serverModel = $ownedModel
+    $script:selectedModel = @($models | Where-Object { $_ -ne $ownedModel })[0]
+    foreach ($ready in @($false, $true)) {
+        foreach ($busy in @($false, $true)) {
+            $script:serverReady = $ready
+            $script:warmupReady = $true
+            $script:taskProcess = if ($busy) { [pscustomobject]@{ HasExited = $false } } else { $null }
+            Update-Status
+            Assert-That (-not $warmupButton.Enabled -and -not $runButton.Enabled -and -not $startButton.Enabled) 'Mismatched owned model allowed work using stale readiness'
+            Assert-That ($stopButton.Enabled -eq (-not $busy)) 'Mismatched owned model has wrong stop state'
+            Assert-That ($serverStatus.Text.Contains($ownedModel) -and $serverStatus.Text.Contains('stop')) 'Mismatch status does not identify owned model'
+            Assert-That ($script:serverReady -eq $ready) 'Mismatch inferred or changed global readiness'
+        }
+    }
+    $script:taskProcess = $null
+    $script:selectedModel = $ownedModel
+    foreach ($ready in @($false, $true)) {
+        $script:serverReady = $ready
+        Update-Status
+        Assert-That ($warmupButton.Enabled -and $stopButton.Enabled -and -not $startButton.Enabled) 'Matching owned model controls are wrong'
+        Assert-That ($runButton.Enabled -eq $ready) 'Matching owned model ignored actual server readiness'
+    }
+}
+''')
+
+
+def test_controller_local_launcher_dispatch_and_owned_model_cleanup(tmp_path):
+    run_controller_powershell(tmp_path, r'''
+Add-Type -TypeDefinition @'
+namespace ControllerTest {
+    public static class MessageBox {
+        public static string LastMessage;
+        public static string Show(string text, string title, string buttons, string icon) {
+            LastMessage = text;
+            return "Yes";
+        }
+    }
+}
+'@
+function Get-SelectedModel { [pscustomobject]@{ Name = 'test local'; Profile = [pscustomobject]@{ provider = 'local'; model = $script:selectedModel } } }
+function Test-Port8000 { $false }
+function Update-Status { }
+function Read-WatchedFiles { }
+function Update-ThroughputStatus { }
+function Start-TrackedProcess($FileName, $Arguments, $WorkingDirectory, $Tag) {
+    $script:started += [pscustomobject]@{ FileName = $FileName; Arguments = $Arguments; WorkingDirectory = $WorkingDirectory; Tag = $Tag }
+    [pscustomobject]@{ Id = 12345; HasExited = $false; ExitCode = 0 }
+}
+function Start-Process { param($FilePath, $ArgumentList, $WindowStyle, [switch]$Wait)
+    Assert-That ($FilePath -eq 'taskkill.exe' -and $ArgumentList -eq '/PID 12345 /T /F' -and $Wait) 'Unexpected stop process'
+    $script:stopCalls++
+}
+$script:workspaceRoot = $env:CONTROLLER_TEST_TEMP
+$script:modelRoot = Join-Path $script:workspaceRoot 'models'
+$script:ovmsRoot = Join-Path $script:workspaceRoot 'ovms'
+$script:logRoot = Join-Path $script:workspaceRoot 'logs'
+foreach ($directory in @($script:modelRoot, $script:ovmsRoot, $script:logRoot)) {
+    New-Item -ItemType Directory -Path $directory | Out-Null
+}
+foreach ($relative in @('start-27b-article.cmd', 'start-qwen3-coder-30b.cmd', 'morteza89-qwen3.8-27b-int4-ov\openvino_language_model.xml', 'qwen3-coder-30b-a3b-int4-ov\openvino_model.xml', 'qwen3-8b-int8\graph.pbtxt', 'migration-ovms.json')) {
+    $path = Join-Path $script:modelRoot $relative
+    New-Item -ItemType Directory -Force -Path (Split-Path $path) | Out-Null
+    [System.IO.File]::WriteAllText($path, 'test-only sentinel; never execute')
+}
+foreach ($relative in @('setupvars.bat', 'ovms.exe')) {
+    [System.IO.File]::WriteAllText((Join-Path $script:ovmsRoot $relative), 'test-only sentinel; never execute')
+}
+$start = Get-ControllerHandler 'startButton' 'Add_Click'
+$stop = Get-ControllerHandler 'stopButton' 'Add_Click'
+$tick = Get-ControllerHandler 'timer' 'Add_Tick'
+$script:taskProcess = $null
+$script:stopCalls = 0
+$wrapper = Join-Path $script:logRoot 'start-local-model.cmd'
+foreach ($case in @(
+    @('qwen3.8-27b-ov', 'start-27b-article.cmd', $script:workspaceRoot),
+    @('qwen3-coder-30b-a3b-ov', 'start-qwen3-coder-30b.cmd', $script:workspaceRoot),
+    @('OpenVINO/Qwen3-8B-int8-ov', 'ovms.exe', $script:ovmsRoot)
+)) {
+    $script:selectedModel = $case[0]
+    $script:serverProcess = $null
+    $script:serverModel = $null
+    $script:serverReady = $true
+    $script:warmupReady = $true
+    $script:started = @()
+    [ControllerTest.MessageBox]::LastMessage = $null
+    & $start
+    Assert-That ($script:started.Count -eq 1) "Did not start exactly once for $($case[0])"
+    $call = $script:started[0]
+    Assert-That ($call.Tag -eq 'server' -and $call.FileName -eq $env:ComSpec -and $call.Arguments.Contains($wrapper) -and $call.WorkingDirectory -eq $case[2]) 'Wrong tracked process dispatch'
+    Assert-That ((Get-Content $wrapper -Raw).Contains($case[1])) 'Wrong launcher wrapper'
+    Assert-That ([string]::IsNullOrEmpty([ControllerTest.MessageBox]::LastMessage)) "Start handler caught an unexpected error: $([ControllerTest.MessageBox]::LastMessage)"
+    Assert-That ($script:serverModel -eq $case[0] -and $null -ne $script:serverProcess) 'Started server ownership not recorded'
+    Assert-That (-not $script:serverReady -and -not $script:warmupReady) 'Start retained stale readiness'
+    & $stop
+    Assert-That ($null -eq $script:serverModel -and $null -eq $script:serverProcess -and -not $script:serverReady -and -not $script:warmupReady) 'Stop retained owned server state'
+    $script:serverProcess = [pscustomobject]@{ HasExited = $true; ExitCode = 0 }
+    $script:serverModel = $case[0]
+    $script:serverReady = $true
+    & $tick
+    Assert-That ($null -eq $script:serverProcess -and $null -eq $script:serverModel -and -not $script:serverReady) 'Exited server ownership not cleared'
+}
+Assert-That ($script:stopCalls -eq 3) 'Stop did not use mocked process termination'
+Remove-Item -LiteralPath $wrapper
+$script:selectedModel = 'unknown-local-model'
+$script:started = @()
+& $start
+Assert-That ($script:started.Count -eq 0 -and -not (Test-Path $wrapper)) 'Unknown model fell back to a launcher'
+Assert-That ([ControllerTest.MessageBox]::LastMessage -eq 'No local launcher is registered for unknown-local-model.') 'Unknown model did not report explicit rejection'
+Assert-That ($null -eq $script:serverProcess -and $null -eq $script:serverModel) 'Unknown model acquired server ownership'
+''')
+
+
+@pytest.mark.parametrize("workflow", ["dependency-migration", "security-repair", "regression-tests"])
+def test_qwen3_coder_profile_uses_local_route_and_existing_budget(workflow):
+    from worker import request_options
+
+    profile = bench.load(bench.ENGINE_ROOT / "profiles/qwen3-coder-30b.json")
+    policy = bench.load(bench.ENGINE_ROOT.parent / workflow / "policy.json")
+    bench.validate_profile(profile, False, False)
+    options = request_options(profile, policy)
+    assert options["model"] == profile["expected_returned_model"] == "qwen3-coder-30b-a3b-ov"
+    assert options["max_tokens"] == 2048
+    assert options["timeout"] == policy["request_timeout_seconds"]
+    assert profile["inference"]["model_revision"] == "21140c68a63012da511fe50656319e00be2f6542"
+    assert profile["qualified"] is False
+    assert bench.api_fee(profile, []) == 0
+
+
 @pytest.mark.parametrize("workflow", ["dependency-migration", "security-repair", "regression-tests"])
 def test_astra_uses_existing_responses_adapter_and_workflow_budget(monkeypatch, workflow):
     from worker import openai_response_options

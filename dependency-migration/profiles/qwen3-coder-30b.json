@@ -1,0 +1,26 @@
+{
+  "label": "ptl-qwen3-coder-30b-a3b-int4",
+  "provider": "local",
+  "base_url": "http://127.0.0.1:8000/v3",
+  "model": "qwen3-coder-30b-a3b-ov",
+  "expected_returned_model": "qwen3-coder-30b-a3b-ov",
+  "extra_body": {},
+  "qualified": false,
+  "host": {"sku": "REQUIRED", "ram_gb": null, "os": "REQUIRED", "driver": "REQUIRED", "bios": "REQUIRED", "power_mode": "REQUIRED"},
+  "inference": {
+    "runtime": "OVMS 2026.4.0.869b2186; OpenVINO 2026.4.0; OpenVINO GenAI 2026.4.0",
+    "runtime_sha256": "REQUIRED",
+    "model_revision": "21140c68a63012da511fe50656319e00be2f6542",
+    "export_sha256": "REQUIRED",
+    "template_sha256": "REQUIRED",
+    "device": "GPU",
+    "context_limit": null,
+    "reasoning_effort": "Qwen3-Coder Instruct; no thinking option requested",
+    "cache_policy": "2 GB KV cache; prefix caching enabled; disk compilation cache enabled; record warm/cold condition",
+    "cold_start_seconds": null,
+    "peak_memory_gb": null,
+    "offload_evidence": "REQUIRED",
+    "no_cloud_fallback_evidence": "loopback-only OVMS; no alternate endpoint configured"
+  },
+  "rate_card": null
+}

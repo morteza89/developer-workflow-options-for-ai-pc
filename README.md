@@ -12,9 +12,41 @@ Start with [Dependency Migration](dependency-migration/README.md) for the curren
 
 The [handoff](AI_PC_WORKFLOW_HANDOFF.md) documents the proposal. Dependency Migration and Security Repair use 600 seconds. The user retained 720 seconds for Regression Tests on 20 October 2026 after successful 27B pilots. Its original 600-second results remain historical and are not pooled with the longer-budget experiment. Evaluation/setup/cleanup are outside each work budget. Infrastructure/API/context errors and manual cancellation remain possible.
 
+## Qwen3-Coder Local Model
+
+All three controllers include **Qwen3-Coder 30B-A3B INT4 (local)** as a fifth choice. The source is [OpenVINO/Qwen3-Coder-30B-A3B-Instruct-int4-ov](https://huggingface.co/OpenVINO/Qwen3-Coder-30B-A3B-Instruct-int4-ov), pinned to revision `21140c68a63012da511fe50656319e00be2f6542`. This is a distinct model from the existing 27B and 8B options. Its approximately 16.3 GB main weights file was checked against the pinned repository SHA-256: `03936cfcf2b9edd8d5a492e67eeb90862b7aeaef724b748154ebc2b55fe90d31`. The 3B active-parameter designation does not mean only 3B parameters must fit in memory.
+
+Download assets before timing, from the repository root:
+
+```powershell
+.\dependency-migration\.venv-runner\Scripts\hf.exe download OpenVINO/Qwen3-Coder-30B-A3B-Instruct-int4-ov --revision 21140c68a63012da511fe50656319e00be2f6542 --local-dir .\models\qwen3-coder-30b-a3b-int4-ov
+```
+
+The [dedicated launcher](models/start-qwen3-coder-30b.cmd) uses the existing OVMS 2026.4 runtime, explicit GPU device, loopback port 8000, `qwen3coder` parser, 2 GB KV cache, prefix caching, and a separate disk compilation cache. It clears inherited `API_KEY` for this local keyless endpoint. Models, caches, and private profiles remain local and are not committed. The [profile template](dependency-migration/profiles/qwen3-coder-30b.json) creates a separate private profile when selected. It remains unqualified: independent device, peak-memory, context, and repeated-run qualification are still required.
+
+Close and reopen an existing controller, select Coder, click **Start selected local model**, wait for **AVAILABLE**, and click **Test connection** before **Run unscored pilot**. Stop the current local server before switching models. The controller prevents a previously started model's readiness from authorizing a different model. Model setup, compilation, and warmup are outside the work budget. All models use the same agent and acceptance contract within each frozen task; the Coder response limit remains 2048 tokens and no cloud fallback is configured.
+
+Current GUI freezes are [Migration v10](dependency-migration/artifacts/freeze-600s-v10.json), [Security v9](security-repair/artifacts/freeze-600s-pyjwt-v9.json), and [Regression v2](regression-tests/artifacts/freeze-720s-requests-v2.json). Migration and Security were requalified and smoke-tested for the existing shared-engine changes; their previous freezes remain historical. For migration CLI runs, explicitly pass `--freeze .\dependency-migration\artifacts\freeze-600s-v10.json` from the repository root, since its older CLI default is retained. Do not compare the refreshed Migration/Security results directly with attempts from older task hashes; rerun other models on these same freezes first.
+
+### Initial Coder Pilots
+
+One unscored attempt per workload on Intel Arc B390 / 63.4 GB RAM, with the pinned GPU launcher and a warm resident model:
+
+| Workload | Submission / budget | Protected checks | Generated tests | Faults detected | Accepted |
+| --- | ---: | ---: | ---: | ---: | --- |
+| Dependency Migration | 600.00 / 600 s | 25/39 | 8/8 | N/A | No |
+| Security Repair | 410.69 / 600 s | 4/8 | 0 collected | N/A | No |
+| Regression Tests | 47.51 / 720 s | 9/9 | 3/3 | 8/8 | Yes |
+
+Attempt IDs: Migration `attempt-1cb8f6af894f46cea82c3f100b6a4ed4`; Security `attempt-01ea5864462a4aaea922536721817529`; Regression `attempt-4e269e77ca534578bab2a4ce78fac3c6`. All three recorded $0 cloud API fees and clean cleanup. Completed-request output rates were approximately 26.87, 23.56, and 39.44 tokens/s respectively; these are client-observed rates, not isolated GPU decode measurements.
+
+Migration timed out with incomplete behavior and an unpermitted `=2.12.0` file caused by the model's unquoted `pip install pydantic>=2.12.0` command. Security submitted without the repair or a collected designated suite and wrote unpermitted `test_fix.py`. Those files were not accepted into the verified submission. Regression's three test functions contain real assertions that independently detect all eight faults; test-function count alone is not the quality criterion. A separate reviewer checked the saved evidence. These single pilots do not establish reliability or a hardware ranking.
+
+Attempts were sequential with prefix caching enabled. After Migration's cutoff left an in-flight request, the owned server was restarted and warmed before Security; Regression followed Security without a restart. The test server was stopped after the pilots. Preserve those cache/startup conditions when interpreting results, and keep complete attempt directories for review.
+
 ## OpenAI Models in Every GUI
 
-All three workflow controllers offer **GPT-6.1 Sol** (`gpt-6.1-sol`) and **GPT-6 Astra** (`gpt-6-astra`) as separate choices, alongside the two local models. Close and reopen an existing controller to load the new option. Select **GPT-6 Astra (OpenAI API)**, use **Set OpenAI API key**, then **Test connection** and **Run unscored pilot**. Warmups and pilots require billable-run confirmation; access depends on your OpenAI API project. No model fallback is used.
+All three workflow controllers offer **GPT-6.1 Sol** (`gpt-6.1-sol`) and **GPT-6 Astra** (`gpt-6-astra`) as separate choices, alongside the local models. Close and reopen an existing controller to load the new option. Select **GPT-6 Astra (OpenAI API)**, use **Set OpenAI API key**, then **Test connection** and **Run unscored pilot**. Warmups and pilots require billable-run confirmation; access depends on your OpenAI API project. No model fallback is used.
 
 Astra uses the same Responses API shell-action loop, medium reasoning effort, and 2048-token response limit as Sol. Both receive the selected workflow's unchanged budget: 600 seconds for Dependency Migration/Security Repair, 720 seconds for Regression Tests. Reports keep their model identities, profile fingerprints, usage, and costs separate.
 
