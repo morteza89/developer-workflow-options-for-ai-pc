@@ -1,0 +1,37 @@
+{
+  "label": "local-qwen38-fable5-coding-27b-int4",
+  "provider": "local",
+  "base_url": "http://127.0.0.1:8000/v3",
+  "model": "qwen38-fable5-int4",
+  "expected_returned_model": "qwen38-fable5-int4",
+  "extra_body": {
+    "chat_template_kwargs": {
+      "enable_thinking": false
+    }
+  },
+  "qualified": false,
+  "host": {
+    "sku": "REQUIRED",
+    "ram_gb": null,
+    "os": "REQUIRED",
+    "driver": "REQUIRED",
+    "bios": "REQUIRED",
+    "power_mode": "REQUIRED"
+  },
+  "inference": {
+    "runtime": "OVMS 2026.4.0.869b2186; OpenVINO 2026.4.0-22959-99c81491cc3-releases/2026/4; OpenVINO GenAI 2026.4.0.0-3407-7ea2546852a",
+    "runtime_sha256": "c65f00f28da1f163988c003517d2dd3e4986749648a98cea0a0c19f1ffe16f0c",
+    "model_revision": "6a84fb7b49812848f4541b84ae45307ad4c1fb8d",
+    "export_sha256": "REQUIRED",
+    "template_sha256": "ae9644304511ef71f28e036b6f65b4c709880bc5a23b7d0b42125ec63a8c70ca",
+    "device": "GPU",
+    "context_limit": null,
+    "reasoning_effort": "Qwen3.8 Fable 5 coding distilled; thinking disabled for benchmark protocol",
+    "cache_policy": "Dynamic KV cache; prefix caching enabled; separate disk compilation cache; record warm/cold condition",
+    "cold_start_seconds": null,
+    "peak_memory_gb": null,
+    "offload_evidence": "OVMS launched with target_device GPU; independent device and peak-memory qualification pending",
+    "no_cloud_fallback_evidence": "loopback-only OVMS; no alternate endpoint configured"
+  },
+  "rate_card": null
+}

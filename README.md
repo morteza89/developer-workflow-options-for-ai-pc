@@ -44,6 +44,20 @@ Migration timed out with incomplete behavior and an unpermitted `=2.12.0` file c
 
 Attempts were sequential with prefix caching enabled. After Migration's cutoff left an in-flight request, the owned server was restarted and warmed before Security; Regression followed Security without a restart. The test server was stopped after the pilots. Preserve those cache/startup conditions when interpreting results, and keep complete attempt directories for review.
 
+## Qwen3.8 Fable 5 Coding Model
+
+All three controllers include **Qwen3.8 27B Fable 5 Coding INT4 (local)** as a separate sixth model choice. It is an unofficial INT4 OpenVINO conversion of the Fable 5 coding-distilled Qwen3.8 VLM; this is not the existing base Qwen3.8 27B checkpoint. The published OVMS model name is `qwen38-fable5-int4`; repository revision is `6a84fb7b49812848f4541b84ae45307ad4c1fb8d`. The model card reports successful native Windows OVMS 2026.4 use with Arc B390 GPU. It describes the export as VLM and reports unresolved upstream training provenance details; this integration does not independently validate its training data or claims. NPU use is not claimed.
+
+Check disk space before downloading: the language weights are about 13.9 GB, with vision, embeddings, tokenizer, and runtime files adding several more GB. Run from the repository root, outside measured model work:
+
+```powershell
+.\dependency-migration\.venv-runner\Scripts\hf.exe download Morteza89/qwen3.8-27b-fable-5-coding-distilled-int4-ov --revision 6a84fb7b49812848f4541b84ae45307ad4c1fb8d --local-dir .\models\qwen3.8-27b-fable-5-coding-distilled-int4-ov
+```
+
+The [dedicated launcher](models/start-qwen38-fable5-coding-27b.cmd) serves the OpenVINO folder directly on loopback through OVMS 2026.4, explicitly targets GPU, enables prefix caching, and uses a separate compilation cache. It clears inherited `API_KEY`. No test images or remote image URLs are required for these text-only software tasks. The [profile template](dependency-migration/profiles/qwen38-fable5-coding-27b.json) disables Qwen thinking to match the benchmark text-action protocol. It is unqualified until export/template hashes, context, peak GPU/system memory, actual device execution, and repeatable inference are measured.
+
+Close and reopen each controller to load the sixth option. Start the selected Fable model, wait for **AVAILABLE**, and run **Test connection** before an unscored pilot. Stop the current local model before switching; the GUI blocks a pilot when its owned server model does not match the selected profile. Use the same workflow freezes and deadlines as the other models. Task setup and model compilation stay outside the measured interval. Keep the existing agent loop, prompt, 2048-token response limit, graders, and task acceptance unchanged.
+
 ## OpenAI Models in Every GUI
 
 All three workflow controllers offer **GPT-6.1 Sol** (`gpt-6.1-sol`) and **GPT-6 Astra** (`gpt-6-astra`) as separate choices, alongside the local models. Close and reopen an existing controller to load the new option. Select **GPT-6 Astra (OpenAI API)**, use **Set OpenAI API key**, then **Test connection** and **Run unscored pilot**. Warmups and pilots require billable-run confirmation; access depends on your OpenAI API project. No model fallback is used.

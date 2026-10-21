@@ -77,11 +77,11 @@ function Write-Log { param($message) }
     assert "CONTROLLER_TEST_PASSED" in result.stdout, result.stdout + result.stderr
 
 
-def test_controller_fifth_choice_copies_coder_template_only(tmp_path):
+def test_controller_local_choices_copy_coder_and_fable_templates(tmp_path):
     run_controller_powershell(tmp_path, r'''
-Assert-That (($script:profilePaths -join '|') -ceq 'ptl-morteza89-27b.private.json|ptl-8b.private.json|ptl-openai.private.json|ptl-openai-astra.private.json|ptl-qwen3-coder-30b.private.json') 'Private profile choices are not aligned'
-Assert-That (($script:templatePaths -join '|') -ceq 'article-27b.json|local-8b.json|openai.json|openai-astra.json|qwen3-coder-30b.json') 'Template choices are not aligned'
-Assert-That (($script:modelNames -join '|') -ceq 'Qwen3.8 27B INT4 (local)|Qwen3 8B INT8 (local)|GPT-6.1 Sol (OpenAI API)|GPT-6 Astra (OpenAI API)|Qwen3-Coder 30B-A3B INT4 (local)') 'Display choices are not aligned'
+Assert-That (($script:profilePaths -join '|') -ceq 'ptl-morteza89-27b.private.json|ptl-8b.private.json|ptl-openai.private.json|ptl-openai-astra.private.json|ptl-qwen3-coder-30b.private.json|ptl-qwen38-fable5-coding-27b.private.json') 'Private profile choices are not aligned'
+Assert-That (($script:templatePaths -join '|') -ceq 'article-27b.json|local-8b.json|openai.json|openai-astra.json|qwen3-coder-30b.json|qwen38-fable5-coding-27b.json') 'Template choices are not aligned'
+Assert-That (($script:modelNames -join '|') -ceq 'Qwen3.8 27B INT4 (local)|Qwen3 8B INT8 (local)|GPT-6.1 Sol (OpenAI API)|GPT-6 Astra (OpenAI API)|Qwen3-Coder 30B-A3B INT4 (local)|Qwen3.8 27B Fable 5 Coding INT4 (local)') 'Display choices are not aligned'
 $template = Join-Path $script:profileRoot $script:templatePaths[4]
 $source = Join-Path (Split-Path $env:CONTROLLER_TEST_SOURCE) ('profiles\' + $script:templatePaths[4])
 Copy-Item -LiteralPath $source -Destination $template
@@ -96,7 +96,15 @@ Assert-That ([Convert]::ToBase64String([System.IO.File]::ReadAllBytes($template)
 [System.IO.File]::WriteAllText($selected.Path, '{"provider":"local","model":"private-sentinel"}')
 $again = Get-SelectedModel
 Assert-That ($again.Profile.model -ceq 'private-sentinel') 'Existing private profile was overwritten'
-Assert-That (@(Get-ChildItem $script:profileRoot -File).Count -eq 2) 'Unexpected profile files created'
+$fableTemplate = Join-Path $script:profileRoot $script:templatePaths[5]
+$fableSource = Join-Path (Split-Path $env:CONTROLLER_TEST_SOURCE) ('profiles\' + $script:templatePaths[5])
+Copy-Item -LiteralPath $fableSource -Destination $fableTemplate
+$modelPicker = [pscustomobject]@{ SelectedIndex = 5 }
+$fable = Get-SelectedModel
+Assert-That ($fable.Index -eq 5 -and $fable.Name -ceq $script:modelNames[5]) 'Wrong sixth selection'
+Assert-That ($fable.Profile.provider -eq 'local' -and $fable.Profile.model -ceq 'qwen38-fable5-int4') 'Wrong Fable profile'
+Assert-That ($fable.Profile.inference.model_revision -ceq '6a84fb7b49812848f4541b84ae45307ad4c1fb8d') 'Wrong Fable revision'
+Assert-That (@(Get-ChildItem $script:profileRoot -File).Count -eq 4) 'Unexpected profile files created'
 ''')
 
 
@@ -113,7 +121,7 @@ foreach ($name in @('apiKeyButton', 'startButton', 'stopButton', 'warmupButton',
 $apiStatus = [pscustomobject]@{ Text = ''; ForeColor = $null }
 $serverStatus = [pscustomobject]@{ Text = ''; ForeColor = $null }
 $script:serverProcess = [pscustomobject]@{ HasExited = $false }
-$models = @('qwen3.8-27b-ov', 'qwen3-coder-30b-a3b-ov')
+$models = @('qwen3.8-27b-ov', 'qwen3-coder-30b-a3b-ov', 'qwen38-fable5-int4')
 foreach ($ownedModel in $models) {
     $script:serverModel = $ownedModel
     $script:selectedModel = @($models | Where-Object { $_ -ne $ownedModel })[0]
@@ -174,7 +182,7 @@ $script:logRoot = Join-Path $script:workspaceRoot 'logs'
 foreach ($directory in @($script:modelRoot, $script:ovmsRoot, $script:logRoot)) {
     New-Item -ItemType Directory -Path $directory | Out-Null
 }
-foreach ($relative in @('start-27b-article.cmd', 'start-qwen3-coder-30b.cmd', 'morteza89-qwen3.8-27b-int4-ov\openvino_language_model.xml', 'qwen3-coder-30b-a3b-int4-ov\openvino_model.xml', 'qwen3-8b-int8\graph.pbtxt', 'migration-ovms.json')) {
+foreach ($relative in @('start-27b-article.cmd', 'start-qwen3-coder-30b.cmd', 'start-qwen38-fable5-coding-27b.cmd', 'morteza89-qwen3.8-27b-int4-ov\openvino_language_model.xml', 'qwen3-coder-30b-a3b-int4-ov\openvino_model.xml', 'qwen3.8-27b-fable-5-coding-distilled-int4-ov\openvino_language_model.xml', 'qwen3-8b-int8\graph.pbtxt', 'migration-ovms.json')) {
     $path = Join-Path $script:modelRoot $relative
     New-Item -ItemType Directory -Force -Path (Split-Path $path) | Out-Null
     [System.IO.File]::WriteAllText($path, 'test-only sentinel; never execute')
@@ -191,6 +199,7 @@ $wrapper = Join-Path $script:logRoot 'start-local-model.cmd'
 foreach ($case in @(
     @('qwen3.8-27b-ov', 'start-27b-article.cmd', $script:workspaceRoot),
     @('qwen3-coder-30b-a3b-ov', 'start-qwen3-coder-30b.cmd', $script:workspaceRoot),
+    @('qwen38-fable5-int4', 'start-qwen38-fable5-coding-27b.cmd', $script:workspaceRoot),
     @('OpenVINO/Qwen3-8B-int8-ov', 'ovms.exe', $script:ovmsRoot)
 )) {
     $script:selectedModel = $case[0]
@@ -216,7 +225,7 @@ foreach ($case in @(
     & $tick
     Assert-That ($null -eq $script:serverProcess -and $null -eq $script:serverModel -and -not $script:serverReady) 'Exited server ownership not cleared'
 }
-Assert-That ($script:stopCalls -eq 3) 'Stop did not use mocked process termination'
+Assert-That ($script:stopCalls -eq 4) 'Stop did not use mocked process termination'
 Remove-Item -LiteralPath $wrapper
 $script:selectedModel = 'unknown-local-model'
 $script:started = @()
@@ -239,6 +248,23 @@ def test_qwen3_coder_profile_uses_local_route_and_existing_budget(workflow):
     assert options["max_tokens"] == 2048
     assert options["timeout"] == policy["request_timeout_seconds"]
     assert profile["inference"]["model_revision"] == "21140c68a63012da511fe50656319e00be2f6542"
+    assert profile["qualified"] is False
+    assert bench.api_fee(profile, []) == 0
+
+
+@pytest.mark.parametrize("workflow", ["dependency-migration", "security-repair", "regression-tests"])
+def test_qwen38_fable5_profile_uses_local_route_and_existing_budget(workflow):
+    from worker import request_options
+
+    profile = bench.load(bench.ENGINE_ROOT / "profiles/qwen38-fable5-coding-27b.json")
+    policy = bench.load(bench.ENGINE_ROOT.parent / workflow / "policy.json")
+    bench.validate_profile(profile, False, False)
+    options = request_options(profile, policy)
+    assert options["model"] == profile["expected_returned_model"] == "qwen38-fable5-int4"
+    assert options["extra_body"] == {"chat_template_kwargs": {"enable_thinking": False}}
+    assert options["max_tokens"] == 2048
+    assert options["timeout"] == policy["request_timeout_seconds"]
+    assert profile["inference"]["model_revision"] == "6a84fb7b49812848f4541b84ae45307ad4c1fb8d"
     assert profile["qualified"] is False
     assert bench.api_fee(profile, []) == 0
 

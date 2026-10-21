@@ -37,21 +37,24 @@ $script:profilePaths = @(
     'ptl-8b.private.json',
     'ptl-openai.private.json',
     'ptl-openai-astra.private.json',
-    'ptl-qwen3-coder-30b.private.json'
+    'ptl-qwen3-coder-30b.private.json',
+    'ptl-qwen38-fable5-coding-27b.private.json'
 )
 $script:templatePaths = @(
     'article-27b.json',
     'local-8b.json',
     'openai.json',
     'openai-astra.json',
-    'qwen3-coder-30b.json'
+    'qwen3-coder-30b.json',
+    'qwen38-fable5-coding-27b.json'
 )
 $script:modelNames = @(
     'Qwen3.8 27B INT4 (local)',
     'Qwen3 8B INT8 (local)',
     'GPT-6.1 Sol (OpenAI API)',
     'GPT-6 Astra (OpenAI API)',
-    'Qwen3-Coder 30B-A3B INT4 (local)'
+    'Qwen3-Coder 30B-A3B INT4 (local)',
+    'Qwen3.8 27B Fable 5 Coding INT4 (local)'
 )
 
 New-Item -ItemType Directory -Force -Path $script:logRoot | Out-Null
@@ -428,6 +431,12 @@ $startButton.Add_Click({
             $launcher = Join-Path $script:modelRoot 'start-qwen3-coder-30b.cmd'
             $modelFile = Join-Path $script:modelRoot 'qwen3-coder-30b-a3b-int4-ov\openvino_model.xml'
             if (-not (Test-Path $launcher) -or -not (Test-Path $modelFile)) { throw 'The pinned Qwen3-Coder launcher or model files are missing; see README.md.' }
+            [System.IO.File]::WriteAllText($wrapper, "@echo off`r`ncall `"$launcher`"`r`n", [System.Text.Encoding]::ASCII)
+        }
+        elseif ($selected.Profile.model -eq 'qwen38-fable5-int4') {
+            $launcher = Join-Path $script:modelRoot 'start-qwen38-fable5-coding-27b.cmd'
+            $modelFile = Join-Path $script:modelRoot 'qwen3.8-27b-fable-5-coding-distilled-int4-ov\openvino_language_model.xml'
+            if (-not (Test-Path $launcher) -or -not (Test-Path $modelFile)) { throw 'The pinned Qwen3.8 Fable 5 launcher or model files are missing; see README.md.' }
             [System.IO.File]::WriteAllText($wrapper, "@echo off`r`ncall `"$launcher`"`r`n", [System.Text.Encoding]::ASCII)
         }
         elseif ($selected.Profile.model -eq 'OpenVINO/Qwen3-8B-int8-ov') {

@@ -13,6 +13,7 @@ DEFAULT_PROFILES = (
     "profiles/ptl-openai.private.json",
     "profiles/ptl-openai-astra.private.json",
     "profiles/ptl-qwen3-coder-30b.private.json",
+    "profiles/ptl-qwen38-fable5-coding-27b.private.json",
 )
 
 

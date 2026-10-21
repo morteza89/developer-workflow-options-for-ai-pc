@@ -6,6 +6,7 @@ __pycache__/
 /models/*
 !/models/start-27b-article.cmd
 !/models/start-qwen3-coder-30b.cmd
+!/models/start-qwen38-fable5-coding-27b.cmd
 /ovms_downloaded/
 /dependency-migration/artifacts/*
 !/dependency-migration/artifacts/freeze-240s-v3.json
