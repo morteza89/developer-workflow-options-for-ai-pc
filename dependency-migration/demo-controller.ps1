@@ -1,10 +1,95 @@
 #requires -Version 5.1
 param(
     [ValidateSet('dependency-migration', 'security-repair', 'regression-tests')]
-    [string]$Workflow = 'dependency-migration'
+    [string]$Workflow = 'dependency-migration',
+    [string]$FreezePath,
+    [string]$InstallationManifest
 )
 
 $ErrorActionPreference = 'Stop'
+
+function Resolve-InstallationFile([string]$RepositoryRoot, $RelativePath) {
+    if ($RelativePath -isnot [string] -or [string]::IsNullOrWhiteSpace($RelativePath) -or
+        [IO.Path]::IsPathRooted($RelativePath) -or $RelativePath -match '[:*?"<>|\x00-\x1f]' -or
+        @($RelativePath -split '[\\/]' | Where-Object { $_ -eq '' -or $_ -eq '.' -or $_ -eq '..' -or $_ -match '[. ]$' }).Count) {
+        throw 'Unsafe installation-local path.'
+    }
+    $storage = [IO.Path]::GetFullPath((Join-Path $RepositoryRoot 'dependency-migration\artifacts\installation-local')).TrimEnd('\') + '\'
+    $resolved = [IO.Path]::GetFullPath((Join-Path $RepositoryRoot $RelativePath))
+    if (-not $resolved.StartsWith($storage, [StringComparison]::OrdinalIgnoreCase) -or
+        -not (Test-Path -LiteralPath $resolved -PathType Leaf)) {
+        throw "Installation-local file is missing or outside storage: $RelativePath"
+    }
+    $entry = Get-Item -LiteralPath $resolved -Force
+    while ($null -ne $entry) {
+        if ($entry.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw "Unsafe installation-local reparse point: $($entry.FullName)" }
+        $entry = if ($entry -is [IO.FileInfo]) { $entry.Directory } else { $entry.Parent }
+    }
+    return $resolved
+}
+
+function Get-InstallationSettings([string]$ManifestPath, [string]$RepositoryRoot, [string]$WorkflowName, [string]$FreezeOverride) {
+    if ($FreezeOverride) { throw 'InstallationManifest cannot be combined with FreezePath.' }
+    if ($ManifestPath -notmatch '^(?:[A-Za-z]:[\\/]|\\\\[^\\/]+[\\/][^\\/]+[\\/])' -or
+        -not (Test-Path -LiteralPath $ManifestPath -PathType Leaf)) {
+        throw 'InstallationManifest must be an absolute path to an existing file.'
+    }
+    $manifest = Get-Content -LiteralPath $ManifestPath -Raw | ConvertFrom-Json
+    if ($manifest.schema_version -isnot [int] -or $manifest.schema_version -ne 1 -or
+        $manifest.scope -cne 'INSTALLATION-LOCAL' -or $manifest.qualified -isnot [bool] -or $manifest.qualified -ne $false -or
+        $manifest.repository_root -isnot [string] -or -not [IO.Path]::IsPathRooted($manifest.repository_root) -or
+        -not [string]::Equals([IO.Path]::GetFullPath($manifest.repository_root).TrimEnd('\'),
+            [IO.Path]::GetFullPath($RepositoryRoot).TrimEnd('\'), [StringComparison]::OrdinalIgnoreCase)) {
+        throw 'Invalid INSTALLATION-LOCAL manifest identity.'
+    }
+    $record = $manifest.workflows.$WorkflowName
+    if ($null -eq $record -or $record.profiles -isnot [array] -or $record.profiles.Count -ne 6) {
+        throw 'Installation workflow must contain a freeze and six ordered profiles.'
+    }
+    $installedFreeze = Resolve-InstallationFile $RepositoryRoot $record.freeze
+    $installedProfiles = @()
+    for ($index = 0; $index -lt $script:templatePaths.Count; $index++) {
+        $path = Resolve-InstallationFile $RepositoryRoot $record.profiles[$index]
+        $installedProfile = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
+        $template = Get-Content -LiteralPath (Join-Path $script:profileRoot $script:templatePaths[$index]) -Raw | ConvertFrom-Json
+        if ($installedProfile.qualified -isnot [bool] -or $installedProfile.qualified -ne $false -or
+            $installedProfile.provider -cne $template.provider -or $installedProfile.model -cne $template.model) {
+            throw "Installation profile must be unqualified and match model order: $path"
+        }
+        foreach ($field in @('label', 'provider', 'model', 'base_url')) {
+            if ($installedProfile.$field -isnot [string] -or [string]::IsNullOrWhiteSpace($installedProfile.$field)) {
+                throw "Installation profile is missing required identity $field`: $path"
+            }
+        }
+        $installedProfiles += $path
+    }
+    return [pscustomobject]@{ Freeze = $installedFreeze; Profiles = $installedProfiles }
+}
+
+function Initialize-InstallationDocker {
+    $docker = Get-Command docker.exe -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $docker) {
+        $dockerDirectory = $null
+        foreach ($location in @(
+            @{ Root = $env:ProgramFiles; Relative = 'Docker\Docker\resources\bin' },
+            @{ Root = $env:LOCALAPPDATA; Relative = 'Programs\DockerDesktop\resources\bin' }
+        )) {
+            if (-not $location.Root) { continue }
+            $candidate = Join-Path $location.Root $location.Relative
+            if (Test-Path -LiteralPath (Join-Path $candidate 'docker.exe') -PathType Leaf) {
+                $dockerDirectory = $candidate
+                break
+            }
+        }
+        if (-not $dockerDirectory) {
+            throw 'Docker CLI (docker.exe) was not found. Repair your Docker Desktop installation or add its resources\bin directory to PATH, then reopen this shortcut.'
+        }
+        $env:PATH = $dockerDirectory + ';' + $env:PATH
+    }
+    $env:DOCKER_CONTEXT = 'desktop-linux'
+    Remove-Item Env:DOCKER_HOST, Env:DOCKER_TLS_VERIFY, Env:DOCKER_CERT_PATH -ErrorAction SilentlyContinue
+}
+
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
@@ -17,13 +102,28 @@ $script:ovmsRoot = Join-Path $script:workspaceRoot 'ovms_downloaded\windows-2026
 $script:runnerPython = Join-Path $script:engineRoot '.venv-runner\Scripts\python.exe'
 $script:benchScript = Join-Path $script:workflowRoot 'bench.py'
 $script:reportScript = Join-Path $script:engineRoot 'comparison_report.py'
+$script:templatePaths = @(
+    'article-27b.json',
+    'local-8b.json',
+    'openai.json',
+    'openai-astra.json',
+    'qwen3-coder-30b.json',
+    'qwen38-fable5-coding-27b.json'
+)
+$script:installationManifestDigest = if ($InstallationManifest) { (Get-FileHash -LiteralPath $InstallationManifest -Algorithm SHA256 -ErrorAction Stop).Hash } else { $null }
+$script:installationSettings = if ($InstallationManifest) { Get-InstallationSettings $InstallationManifest $script:workspaceRoot $Workflow $FreezePath } else { $null }
+if ($script:installationSettings) { Initialize-InstallationDocker }
 $script:freezeName = if ($Workflow -eq 'dependency-migration') { 'freeze-600s-v10.json' } else { (Get-Content -Raw (Join-Path $script:workflowRoot 'workflow.json') | ConvertFrom-Json).default_freeze }
-$script:freezePath = Join-Path $script:workflowRoot ('artifacts\' + $script:freezeName)
+$script:freezePath = if ($script:installationSettings) { $script:installationSettings.Freeze } elseif ($FreezePath) { [IO.Path]::GetFullPath($FreezePath) } else { Join-Path $script:workflowRoot ('artifacts\' + $script:freezeName) }
 $script:deadlineSeconds = (Get-Content -Raw (Join-Path $script:workflowRoot 'policy.json') | ConvertFrom-Json).deadline_seconds
 $script:artifactRoot = Join-Path $script:workflowRoot 'artifacts'
 $script:logRoot = Join-Path $script:artifactRoot 'demo-controller'
 $script:workflowTitle = switch ($Workflow) { 'security-repair' { 'Security Repair | PyJWT CVE-2022-29217' } 'regression-tests' { 'Regression Tests | Requests URL Utilities' } default { 'Dependency Migration Demo Controller' } }
 $script:reportTitle = switch ($Workflow) { 'security-repair' { 'Security Repair Comparison' } 'regression-tests' { 'Regression Tests Comparison' } default { 'Dependency Migration Comparison' } }
+if ($script:installationSettings) {
+    $script:workflowTitle += ' | INSTALLATION-LOCAL (unscored)'
+    $script:reportTitle += ' | INSTALLATION-LOCAL (unscored)'
+}
 $script:timeBudgetLabel = '{0}-minute' -f ($script:deadlineSeconds / 60)
 $script:serverProcess = $null
 $script:serverModel = $null
@@ -34,22 +134,14 @@ $script:serverReady = $false
 $script:warmupReady = $false
 $script:openReportPath = $null
 $script:watchFiles = @{}
-$script:profilePaths = @(
+$script:profilePaths = if ((Test-Path variable:script:installationSettings) -and $script:installationSettings) { $script:installationSettings.Profiles } else { @(
     'ptl-morteza89-27b.private.json',
     'ptl-8b.private.json',
     'ptl-openai.private.json',
     'ptl-openai-astra.private.json',
     'ptl-qwen3-coder-30b.private.json',
     'ptl-qwen38-fable5-coding-27b.private.json'
-)
-$script:templatePaths = @(
-    'article-27b.json',
-    'local-8b.json',
-    'openai.json',
-    'openai-astra.json',
-    'qwen3-coder-30b.json',
-    'qwen38-fable5-coding-27b.json'
-)
+) }
 $script:modelNames = @(
     'Qwen3.8 27B INT4 (local)',
     'Qwen3 8B INT8 (local)',
@@ -251,14 +343,17 @@ function Show-OpenAIKeyDialog {
 function Get-SelectedModel {
     $index = $modelPicker.SelectedIndex
     if ($index -lt 0 -or $index -ge $script:profilePaths.Count) { throw 'Select a model first.' }
-    $profilePath = Join-Path $script:profileRoot $script:profilePaths[$index]
-    if (-not (Test-Path $profilePath)) {
+    $installed = [IO.Path]::IsPathRooted($script:profilePaths[$index])
+    $profilePath = if ($installed) { $script:profilePaths[$index] } else { Join-Path $script:profileRoot $script:profilePaths[$index] }
+    if (-not (Test-Path -LiteralPath $profilePath -PathType Leaf)) {
+        if ($installed) { throw "Installation profile is missing: $profilePath" }
         $templatePath = Join-Path $script:profileRoot $script:templatePaths[$index]
         if (-not (Test-Path $templatePath)) { throw "Neither the private profile nor its template exists: $profilePath" }
         Copy-Item -LiteralPath $templatePath -Destination $profilePath
         Write-Log "Created private profile from template: $profilePath. Fill host metadata before scored studies."
     }
-    $profile = Get-Content $profilePath -Raw | ConvertFrom-Json
+    $profile = Get-Content -LiteralPath $profilePath -Raw | ConvertFrom-Json
+    if ($installed -and ($profile.qualified -isnot [bool] -or $profile.qualified -ne $false)) { throw 'Installation profiles must remain unqualified.' }
     return [pscustomobject]@{ Index = $index; Name = $script:modelNames[$index]; Path = $profilePath; Profile = $profile }
 }
 
@@ -434,6 +529,39 @@ function Start-TrackedProcess([string]$FileName, [string]$Arguments, [string]$Wo
     return $process
 }
 
+function Assert-InstallationCurrent {
+    $assertManifest = {
+        if (-not (Test-Path variable:InstallationManifest) -or [string]::IsNullOrWhiteSpace($InstallationManifest) -or
+            -not (Test-Path variable:script:installationManifestDigest) -or [string]::IsNullOrWhiteSpace($script:installationManifestDigest) -or
+            -not (Test-Path -LiteralPath $InstallationManifest -PathType Leaf) -or
+            (Get-FileHash -LiteralPath $InstallationManifest -Algorithm SHA256 -ErrorAction Stop).Hash -ne $script:installationManifestDigest) {
+            throw 'Installation changed; close and reopen this controller before running a pilot.'
+        }
+    }
+    & $assertManifest
+    $helper = Join-Path $script:workspaceRoot 'installer\prepare_workflows.py'
+    $arguments = '-B "{0}" --root "{1}" --verify-only' -f $helper, $script:workspaceRoot
+    Write-Log 'Verifying installation hashes and smoke receipts before starting the pilot...'
+    $verificationProcess = Start-TrackedProcess $script:runnerPython $arguments $script:workspaceRoot 'installationverify'
+    try {
+        if (-not $verificationProcess.WaitForExit(30000)) {
+            if (-not $verificationProcess.HasExited) { $verificationProcess.Kill() }
+            throw 'Installation verification timed out after 30 seconds. No pilot was started.'
+        }
+        $verificationProcess.Refresh()
+        $exitCode = $verificationProcess.ExitCode
+        if ($null -eq $exitCode -or $exitCode -ne 0) {
+            throw "Installation verification failed (exit $exitCode). No pilot was started. Review the verification log."
+        }
+        & $assertManifest
+        Write-Log 'Installation verification passed.'
+    }
+    finally {
+        Read-WatchedFiles
+        $verificationProcess.Dispose()
+    }
+}
+
 function Start-LocalServer($selected) {
         if ($selected.Profile.provider -ne 'local') { throw 'The selected model does not use a local server.' }
         if (Test-Port8000) { throw 'Port 8000 is already in use. Stop the existing model server before starting another.' }
@@ -593,6 +721,7 @@ $warmupButton.Add_Click({
 $runButton.Add_Click({
     try {
         if ($script:setupProcess) { throw 'Wait for model preparation to finish before running a pilot.' }
+        if ((Test-Path variable:script:installationSettings) -and $script:installationSettings) { Assert-InstallationCurrent }
         $selected = Get-SelectedModel
         if ($selected.Profile.provider -eq 'local' -and -not ($script:serverReady -or $script:warmupReady)) { throw 'Start the selected local server and pass Test connection first.' }
         if ($selected.Profile.provider -eq 'openai' -and [string]::IsNullOrWhiteSpace($env:OPENAI_API_KEY)) { throw 'OPENAI_API_KEY is not set in the PowerShell process that launched this controller.' }
@@ -607,7 +736,10 @@ $runButton.Add_Click({
         Write-Log "Started unscored pilot for $($selected.Name) on freeze $(Split-Path -Leaf $script:freezePath)."
         $throughputStatus.Text = 'Output throughput: waiting for completed attempt'
     }
-    catch { [System.Windows.Forms.MessageBox]::Show($_.Exception.Message, 'Could not start pilot', 'OK', 'Warning') | Out-Null }
+    catch {
+        Write-Log "Could not start pilot: $($_.Exception.Message)"
+        [System.Windows.Forms.MessageBox]::Show($_.Exception.Message, 'Could not start pilot', 'OK', 'Warning') | Out-Null
+    }
     Update-Status
 })
 
@@ -622,6 +754,7 @@ $apiKeyButton.Add_Click({ Show-OpenAIKeyDialog })
 $reportButton.Add_Click({
     if ($script:setupProcess) { Write-Log 'Wait for model preparation to finish before refreshing reports.'; return }
     if ($script:taskProcess -and -not $script:taskProcess.HasExited) { Write-Log 'Wait for the active attempt to finish before refreshing the report.'; return }
+    if ($script:installationSettings) { $comparisonButton.PerformClick(); return }
     $quoted = @($script:benchScript, 'report') | ForEach-Object { '"' + $_ + '"' }
     $script:taskProcess = Start-TrackedProcess $script:runnerPython ($quoted -join ' ') $script:workflowRoot 'report'
     Write-Log 'Refreshing the grouped attempt report...'
@@ -633,7 +766,10 @@ $comparisonButton.Add_Click({
     if ($script:taskProcess -and -not $script:taskProcess.HasExited) { Write-Log 'Wait for the active task to finish before generating the comparison.'; return }
     $reportPath = Join-Path $script:artifactRoot ('comparison-report-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '.md')
     $args = @($script:reportScript, '--directory', $script:artifactRoot, '--freeze', $script:freezePath, '--output', $reportPath, '--title', $script:reportTitle)
-    foreach ($profilePath in $script:profilePaths) { $args += @('--profile', (Join-Path $script:profileRoot $profilePath)) }
+    foreach ($profilePath in $script:profilePaths) {
+        $resolvedProfile = if ([IO.Path]::IsPathRooted($profilePath)) { $profilePath } else { Join-Path $script:profileRoot $profilePath }
+        $args += @('--profile', $resolvedProfile)
+    }
     $quoted = foreach ($arg in $args) { if ($arg -match '\s') { '"' + $arg.Replace('"', '\"') + '"' } else { $arg } }
     $script:openReportPath = $reportPath
     $script:taskProcess = Start-TrackedProcess $script:runnerPython ($quoted -join ' ') $script:workflowRoot 'comparison-report'
@@ -694,6 +830,7 @@ $form.Add_FormClosing({
 })
 
 Write-Log "Choose a model for $Workflow. Start a local server when needed, test the endpoint, then run an unscored pilot."
+if ($script:installationSettings) { Write-Log "INSTALLATION-LOCAL: unqualified, unscored profiles. Manifest: $InstallationManifest" }
 Write-Log "Freeze: $script:freezePath"
 if (-not (Test-Path $script:runnerPython)) { Write-Log "Runner Python is missing: $script:runnerPython" }
 if (-not (Test-Path $script:freezePath)) { Write-Log "Freeze is missing: $script:freezePath" }

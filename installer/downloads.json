@@ -1,0 +1,30 @@
+{
+  "uv": {
+    "url": "https://github.com/astral-sh/uv/releases/download/0.12.7/uv-x86_64-pc-windows-msvc.zip",
+    "sha256": "bf1518af459a3915511a11fdc6e2f43ef9a2afa138b9d498eeb9642fe9d85218",
+    "file": "uv-0.12.7-windows-x64.zip"
+  },
+  "ovms": {
+    "url": "https://github.com/openvinotoolkit/model_server/releases/download/v2026.4.0/ovms_windows_2026.4.0_python_on.zip",
+    "sha256": "5a022e44e794e6a9cb0f1c6c40822167dac53a36daf9af123c9411974cef1914",
+    "file": "ovms_windows_2026.4.0_python_on.zip"
+  },
+  "Docker": {
+    "url": "https://desktop.docker.com/win/main/amd64/244353/Docker%20Desktop%20Installer.exe",
+    "sha256": "ceb589a9871b52971b24aa65915192854e5391a43d3df1b551db89aac50f24fa",
+    "file": "Docker-Desktop-4.96.2.exe",
+    "publisher": "Docker Inc"
+  },
+  "Wsl": {
+    "url": "https://github.com/microsoft/WSL/releases/download/3.0.3/wsl.3.0.3.0.x64.msi",
+    "sha256": "ae977286974255bd26bf925f00f40f5692c6b2084155cbc0563c09aea091f211",
+    "file": "wsl.3.0.3.0.x64.msi",
+    "publisher": "Microsoft Corporation"
+  },
+  "VcRuntime": {
+    "url": "https://download.visualstudio.microsoft.com/download/pr/ebdab8e5-1d7b-4d9f-a11b-cbb1720c3b12/843068991DAAA1F73AD9F6239BCE4D0F6A07A51F18C37EA2A867E9BECA71295C/VC_redist.x64.exe",
+    "sha256": "843068991daaa1f73ad9f6239bce4d0f6a07a51f18c37ea2a867e9beca71295c",
+    "file": "VC_redist-14.51.36247-x64.exe",
+    "publisher": "Microsoft Corporation"
+  }
+}

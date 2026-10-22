@@ -3,6 +3,7 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 /.vscode/settings.json
+/.installer/
 /models/*
 !/models/start-27b-article.cmd
 !/models/start-qwen3-coder-30b.cmd

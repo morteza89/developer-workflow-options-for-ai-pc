@@ -1517,3 +1517,477 @@ def test_comparison_report_filters_freeze_and_summarizes_models(tmp_path):
     assert "`attempt-old`" not in report
     security_report = comparison_report.render_report(tmp_path, frozen, profile_paths, title="Security Repair Comparison")
     assert security_report.startswith("# Security Repair Comparison\n")
+
+
+@pytest.fixture
+def installation_gui_manifest(tmp_path):
+    root = tmp_path / "repository with spaces"
+    local = root / "dependency-migration/artifacts/installation-local"
+    (local / "profiles").mkdir(parents=True)
+    (local / "generation-test").mkdir()
+    (root / "dependency-migration/profiles").mkdir()
+    templates = ["article-27b.json", "local-8b.json", "openai.json", "openai-astra.json",
+                 "qwen3-coder-30b.json", "qwen38-fable5-coding-27b.json"]
+    profiles = []
+    for template in templates:
+        profile = json.loads((bench.ENGINE_ROOT / "profiles" / template).read_text(encoding="utf-8"))
+        bench.save(root / "dependency-migration/profiles" / template, profile)
+        profile["label"] = "INSTALLATION-LOCAL " + Path(template).stem
+        path = local / "profiles" / (Path(template).stem + ".private.json")
+        bench.save(path, profile)
+        profiles.append(path.relative_to(root).as_posix())
+    manifest = {"schema_version": 1, "scope": "INSTALLATION-LOCAL", "qualified": False,
+                "repository_root": str(root), "workflows": {}}
+    for workflow in ("dependency-migration", "security-repair", "regression-tests"):
+        freeze = local / "generation-test" / f"{workflow}-INSTALLATION-LOCAL.freeze.json"
+        bench.save(freeze, {"image": "sha256:test"})
+        manifest["workflows"][workflow] = {"freeze": freeze.relative_to(root).as_posix(), "profiles": profiles.copy()}
+        for name in ("policy.json", "workflow.json"):
+            source = bench.ENGINE_ROOT.parent / workflow / name
+            if source.exists():
+                (root / workflow).mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(source, root / workflow / name)
+    path = local / "workflows.json"
+    bench.save(path, manifest)
+    return root, path, manifest
+
+
+INSTALLATION_GUI_SETUP = r'''
+Assert-That ($PSVersionTable.PSVersion.Major -eq 5) 'Installer tests require Windows PowerShell 5.1'
+Import-Module (Join-Path $PSHOME 'Modules\Microsoft.PowerShell.Utility') -ErrorAction Stop
+foreach ($name in @('Resolve-InstallationFile', 'Get-InstallationSettings', 'Get-SelectedModel')) {
+    . ([scriptblock]::Create((Import-ControllerFunction $name)))
+}
+$testRoot = Join-Path $env:CONTROLLER_TEST_TEMP 'repository with spaces'
+$script:profileRoot = Join-Path $testRoot 'dependency-migration\profiles'
+$InstallationManifest = Join-Path $testRoot 'dependency-migration\artifacts\installation-local\workflows.json'
+$Workflow = 'dependency-migration'
+$FreezePath = ''
+$script:dockerInitializations = 0
+function Initialize-InstallationDocker { $script:dockerInitializations++ }
+function Initialize-InstallationController {
+    $script:engineRoot = Join-Path $testRoot 'dependency-migration'
+    foreach ($statement in $controller.EndBlock.Statements) {
+        if ($statement.Extent.Text -like 'New-Item*') { break }
+        if ($statement -is [System.Management.Automation.Language.AssignmentStatementAst]) {
+            if ($statement.Left.Extent.Text -ne '$script:engineRoot') {
+                . ([scriptblock]::Create($statement.Extent.Text))
+            }
+        }
+        elseif ($statement -is [System.Management.Automation.Language.IfStatementAst]) {
+            . ([scriptblock]::Create($statement.Extent.Text))
+        }
+    }
+}
+'''
+
+
+@pytest.mark.parametrize("workflow", ["dependency-migration", "security-repair", "regression-tests"])
+def test_installer_gui_manifest_routes_profiles_freeze_and_reports(tmp_path, installation_gui_manifest, workflow):
+    run_controller_powershell(tmp_path, INSTALLATION_GUI_SETUP + r'''
+$Workflow = '__WORKFLOW__'
+Initialize-InstallationController
+Assert-That ($script:dockerInitializations -eq 1) 'Installed controller did not initialize Docker once'
+Assert-That ($script:profilePaths.Count -eq 6) 'Missing installed profiles'
+Assert-That ($script:freezePath -like "*generation-test\$Workflow-INSTALLATION-LOCAL.freeze.json") 'Wrong workflow freeze'
+Assert-That ($script:workflowTitle -like '*INSTALLATION-LOCAL (unscored)') 'Missing installation title'
+Assert-That ($script:reportTitle -like '*INSTALLATION-LOCAL (unscored)') 'Missing installation report title'
+$modelPicker = [pscustomobject]@{ SelectedIndex = 0 }
+for ($index = 0; $index -lt 6; $index++) {
+    $modelPicker.SelectedIndex = $index
+    $selected = Get-SelectedModel
+    Assert-That ($selected.Path -eq $script:profilePaths[$index]) 'Selected historical profile'
+    Assert-That ($selected.Profile.label -like 'INSTALLATION-LOCAL *') 'Wrong profile content'
+    Assert-That ([IO.Path]::IsPathRooted($selected.Path)) 'Profile path is not absolute'
+}
+$script:launches = @()
+function Start-TrackedProcess($executable, $arguments, $directory, $kind) {
+    $script:launches += [pscustomobject]@{ Arguments = $arguments; Kind = $kind }
+    return [pscustomobject]@{ HasExited = $true }
+}
+function Update-Status { }
+$script:comparisonHandler = Get-ControllerHandler 'comparisonButton' 'Add_Click'
+$comparisonButton | Add-Member -MemberType ScriptMethod -Name PerformClick -Value { . $script:comparisonHandler }
+foreach ($owner in @('comparisonButton', 'reportButton')) {
+    . (Get-ControllerHandler $owner 'Add_Click')
+    $launch = $script:launches[-1]
+    Assert-That ($launch.Kind -eq 'comparison-report') 'Installed report used unfiltered historical report'
+    Assert-That ($launch.Arguments.Contains('--freeze "' + $script:freezePath + '"')) 'Report lost installed freeze'
+    foreach ($path in $script:profilePaths) {
+        Assert-That ($launch.Arguments.Contains('--profile "' + $path + '"')) 'Report lost installed profile'
+    }
+    Assert-That (-not $launch.Arguments.Contains('ptl-')) 'Report includes historical profile'
+}
+$modelPicker.SelectedIndex = 0
+$script:serverReady = $true
+$script:warmupReady = $false
+$throughputStatus = [pscustomobject]@{ Text = '' }
+$script:verifications = 0
+function Assert-InstallationCurrent { $script:verifications++ }
+. (Get-ControllerHandler 'runButton' 'Add_Click')
+Assert-That ($script:verifications -eq 1) 'Installed pilot skipped verification'
+$launch = $script:launches[-1]
+Assert-That ($launch.Kind -eq 'pilot') 'Pilot was not dispatched'
+Assert-That ($launch.Arguments.Contains('--freeze "' + $script:freezePath + '"')) 'Pilot lost installed freeze'
+Assert-That ($launch.Arguments.Contains('--profile "' + $script:profilePaths[0] + '"')) 'Pilot lost installed profile'
+Assert-That (-not $launch.Arguments.Contains('--scored')) 'Installation run became scored'
+Remove-Item -LiteralPath $script:profilePaths[0]
+$rejected = $false
+try { Get-SelectedModel | Out-Null } catch { $rejected = $true }
+Assert-That $rejected 'Missing installed profile fell back to historical template'
+Assert-That (-not (Test-Path -LiteralPath $script:profilePaths[0])) 'Missing installed profile was recreated'
+'''.replace('__WORKFLOW__', workflow))
+
+
+@pytest.mark.parametrize("failure", ["none", "changed-before", "changed-during", "missing-manifest",
+                                     "missing-digest", "empty-digest", "nonzero", "null-exit", "timeout",
+                                     "start-failed", "historical", "absent-settings"])
+def test_installer_gui_verifies_before_pilot(tmp_path, installation_gui_manifest, failure):
+    run_controller_powershell(tmp_path, INSTALLATION_GUI_SETUP + r'''
+Add-Type -TypeDefinition @'
+namespace ControllerTest {
+    public static class MessageBox {
+        public static int Confirmations;
+        public static string LastMessage;
+        public static string Show(string text, string title, string buttons, string icon) {
+            LastMessage = text;
+            if (buttons == "YesNo") { Confirmations++; }
+            return "Yes";
+        }
+    }
+}
+'@
+Initialize-InstallationController
+. ([scriptblock]::Create((Import-ControllerFunction 'Assert-InstallationCurrent')))
+$failure = '__FAILURE__'
+$originalFreeze = $script:freezePath
+$originalProfiles = $script:profilePaths -join '|'
+$script:messages = @()
+$script:launches = @()
+$script:statusUpdates = 0
+$script:logReads = 0
+$script:selections = 0
+$script:verification = [pscustomobject]@{
+    ExitCode = 0; HasExited = $true; Killed = $false; Disposed = $false; WaitMilliseconds = 0
+}
+$script:verification | Add-Member ScriptMethod WaitForExit {
+    param($milliseconds)
+    $this.WaitMilliseconds = $milliseconds
+    if ($failure -eq 'changed-during') { Add-Content -LiteralPath $InstallationManifest -Value ' ' }
+    return $failure -ne 'timeout'
+}
+$script:verification | Add-Member ScriptMethod Refresh { }
+$script:verification | Add-Member ScriptMethod Kill { $this.Killed = $true }
+$script:verification | Add-Member ScriptMethod Dispose { $this.Disposed = $true }
+function Write-Log($message) { $script:messages += $message }
+function Read-WatchedFiles { $script:logReads++ }
+function Update-Status { $script:statusUpdates++ }
+function Get-SelectedModel {
+    $script:selections++
+    [pscustomobject]@{ Name = 'test cloud'; Path = $script:profilePaths[2]; Profile = [pscustomobject]@{ provider = 'openai' } }
+}
+function Start-TrackedProcess($executable, $arguments, $directory, $kind) {
+    $script:launches += [pscustomobject]@{ Executable = $executable; Arguments = $arguments; Directory = $directory; Kind = $kind }
+    if ($kind -eq 'installationverify') {
+        if ($failure -eq 'start-failed') { throw 'Verifier could not start' }
+        return $script:verification
+    }
+    Assert-That ($kind -eq 'pilot') 'Unexpected child launch'
+    return [pscustomobject]@{ HasExited = $false }
+}
+$benchmark = [pscustomobject]@{ HasExited = $false; Killed = $false }
+$benchmark | Add-Member ScriptMethod Kill { $this.Killed = $true; throw 'Must not kill benchmark' }
+$script:taskProcess = $benchmark
+$throughputStatus = [pscustomobject]@{ Text = '' }
+$env:OPENAI_API_KEY = 'test-placeholder-never-sent'
+switch ($failure) {
+    'changed-before' { Add-Content -LiteralPath $InstallationManifest -Value ' ' }
+    'missing-manifest' { Remove-Item -LiteralPath $InstallationManifest }
+    'missing-digest' { Remove-Variable installationManifestDigest -Scope Script }
+    'empty-digest' { $script:installationManifestDigest = '' }
+    'nonzero' { $script:verification.ExitCode = 7 }
+    'null-exit' { $script:verification.ExitCode = $null }
+    'timeout' { $script:verification.HasExited = $false }
+    'historical' { $script:installationSettings = $null }
+    'absent-settings' { Remove-Variable installationSettings -Scope Script }
+}
+. (Get-ControllerHandler 'runButton' 'Add_Click')
+$success = $failure -in @('none', 'historical', 'absent-settings')
+$verifierExpected = $failure -notin @('changed-before', 'missing-manifest', 'missing-digest', 'empty-digest', 'historical', 'absent-settings')
+$verifiers = @($script:launches | Where-Object Kind -eq 'installationverify')
+$pilots = @($script:launches | Where-Object Kind -eq 'pilot')
+Assert-That ($verifiers.Count -eq [int]$verifierExpected) 'Wrong verifier launch count'
+Assert-That ($pilots.Count -eq [int]$success) 'Verification failure allowed a pilot'
+Assert-That ($script:selections -eq [int]$success) 'Selected model before verification passed'
+Assert-That ([ControllerTest.MessageBox]::Confirmations -eq [int]$success) 'Billable prompt preceded verification'
+Assert-That ($script:statusUpdates -eq 1) 'Controls were not refreshed'
+Assert-That (-not $benchmark.Killed) 'Killed benchmark instead of owned verifier'
+Assert-That ($script:freezePath -eq $originalFreeze -and ($script:profilePaths -join '|') -eq $originalProfiles) 'Changed cached selection'
+if ($verifierExpected) {
+    $launch = $verifiers[0]
+    $helper = Join-Path $script:workspaceRoot 'installer\prepare_workflows.py'
+    Assert-That ($launch.Executable -eq $script:runnerPython) 'Verifier did not use locked runner'
+    Assert-That ($launch.Arguments -ceq ('-B "{0}" --root "{1}" --verify-only' -f $helper, $script:workspaceRoot)) 'Wrong verification arguments or quoting'
+    Assert-That ($launch.Directory -eq $script:workspaceRoot) 'Wrong verifier working directory'
+    if ($failure -ne 'start-failed') {
+        Assert-That ($script:verification.WaitMilliseconds -eq 30000) 'Verification wait was not bounded to 30 seconds'
+        Assert-That ($script:verification.Killed -eq ($failure -eq 'timeout')) 'Incorrect verifier termination'
+        Assert-That ($script:verification.Disposed -and $script:logReads -eq 1) 'Verifier resources or logs were not handled'
+    }
+}
+if ($success) {
+    if ($failure -eq 'none') {
+        Assert-That ($script:launches[0].Kind -eq 'installationverify') 'Pilot preceded verification'
+        Assert-That (($script:messages -join ' ') -like '*Installation verification passed*') 'Missing success log'
+    }
+}
+else {
+    Assert-That ([object]::ReferenceEquals($script:taskProcess, $benchmark)) 'Verification replaced benchmark process'
+    Assert-That (($script:messages -join ' ') -like '*Could not start pilot:*') 'Failure missing from GUI log'
+    Assert-That (($script:messages -join ' ') -notlike '*Installation verification passed*') 'Failure logged as success'
+    $expected = switch ($failure) {
+        'nonzero' { '*verification failed (exit 7)*' }
+        'null-exit' { '*verification failed*' }
+        'timeout' { '*timed out after 30 seconds*' }
+        'start-failed' { '*Verifier could not start*' }
+        default { '*Installation changed; close and reopen*' }
+    }
+    Assert-That ([ControllerTest.MessageBox]::LastMessage -like $expected) 'Wrong failure explanation'
+}
+'''.replace('__FAILURE__', failure))
+
+
+@pytest.mark.parametrize("location", ["path", "program-files", "local-app-data", "both", "missing", "unset-roots"])
+@pytest.mark.parametrize("inherited_overrides", [False, True])
+def test_installer_gui_docker_environment(tmp_path, installation_gui_manifest, location, inherited_overrides):
+    run_controller_powershell(tmp_path, INSTALLATION_GUI_SETUP + r'''
+$definition = Import-ControllerFunction 'Initialize-InstallationDocker'
+$functionAst = [System.Management.Automation.Language.Parser]::ParseInput($definition, [ref]$tokens, [ref]$parseErrors)
+Assert-That ($parseErrors.Count -eq 0) 'Docker initialization did not parse in Windows PowerShell 5.1'
+$commands = @($functionAst.FindAll({ param($node)
+    $node -is [System.Management.Automation.Language.CommandAst]
+}, $true))
+foreach ($command in $commands) {
+    Assert-That ($command.GetCommandName() -in @('Get-Command', 'Select-Object', 'Join-Path', 'Test-Path', 'Remove-Item')) 'Unexpected command could start Docker or change global state'
+}
+$invocations = @($functionAst.FindAll({ param($node)
+    $node -is [System.Management.Automation.Language.InvokeMemberExpressionAst]
+}, $true))
+Assert-That ($invocations.Count -eq 0) 'Docker initialization must not call persistent environment or process APIs'
+$removals = @($commands | Where-Object { $_.GetCommandName() -eq 'Remove-Item' })
+Assert-That ($removals.Count -eq 1 -and $removals[0].Extent.Text -eq 'Remove-Item Env:DOCKER_HOST, Env:DOCKER_TLS_VERIFY, Env:DOCKER_CERT_PATH -ErrorAction SilentlyContinue') 'Only process Docker overrides may be removed'
+. ([scriptblock]::Create($definition))
+$saved = @{}
+foreach ($name in @('PATH', 'ProgramFiles', 'LOCALAPPDATA', 'DOCKER_CONTEXT', 'DOCKER_HOST', 'DOCKER_TLS_VERIFY', 'DOCKER_CERT_PATH')) {
+    $saved[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
+}
+try {
+    $env:ProgramFiles = Join-Path $env:CONTROLLER_TEST_TEMP 'Program Files'
+    $env:LOCALAPPDATA = Join-Path $env:CONTROLLER_TEST_TEMP 'Local App Data'
+    $pathDirectory = Join-Path $env:CONTROLLER_TEST_TEMP 'cli on path'
+    $systemDirectory = Join-Path $env:ProgramFiles 'Docker\Docker\resources\bin'
+    $userDirectory = Join-Path $env:LOCALAPPDATA 'Programs\DockerDesktop\resources\bin'
+    foreach ($directory in @($pathDirectory, $systemDirectory, $userDirectory)) {
+        New-Item -ItemType Directory -Force -Path $directory | Out-Null
+    }
+    $env:PATH = $pathDirectory
+    $env:DOCKER_CONTEXT = 'remote-context'
+    foreach ($name in @('DOCKER_HOST', 'DOCKER_TLS_VERIFY', 'DOCKER_CERT_PATH')) {
+        $value = if (__OVERRIDES__) { 'remote-override' } else { $null }
+        [Environment]::SetEnvironmentVariable($name, $value, 'Process')
+    }
+    $location = '__LOCATION__'
+    $expectedDirectory = switch ($location) {
+        'path' { $pathDirectory }
+        'program-files' { $systemDirectory }
+        'local-app-data' { $userDirectory }
+        'both' { $systemDirectory }
+        default { $null }
+    }
+    if ($expectedDirectory) { [IO.File]::WriteAllText((Join-Path $expectedDirectory 'docker.exe'), 'inert test file; never execute') }
+    if ($location -in @('path', 'both')) {
+        [IO.File]::WriteAllText((Join-Path $systemDirectory 'docker.exe'), 'inert test file; never execute')
+        [IO.File]::WriteAllText((Join-Path $userDirectory 'docker.exe'), 'inert test file; never execute')
+    }
+    if ($location -eq 'unset-roots') {
+        Remove-Item Env:ProgramFiles, Env:LOCALAPPDATA
+    }
+    $failure = $null
+    try { Initialize-InstallationController } catch { $failure = $_ }
+    if (-not $expectedDirectory) {
+        Assert-That ($null -ne $failure) 'Missing Docker CLI was accepted'
+        Assert-That ($failure.Exception.Message -like '*Docker CLI (docker.exe)*Repair*Docker Desktop*PATH*reopen*') 'CLI failure is not actionable'
+        Assert-That ($env:PATH -eq $pathDirectory -and $env:DOCKER_CONTEXT -eq 'remote-context') 'Failed discovery changed the environment'
+    }
+    else {
+        if ($failure) { throw $failure }
+        Assert-That ($env:DOCKER_CONTEXT -eq 'desktop-linux') 'Installation did not select the local Linux context'
+        foreach ($name in @('DOCKER_HOST', 'DOCKER_TLS_VERIFY', 'DOCKER_CERT_PATH')) {
+            Assert-That ($null -eq [Environment]::GetEnvironmentVariable($name, 'Process')) "Inherited override survived: $name"
+        }
+        $expectedPath = if ($location -eq 'path') { $pathDirectory } else { $expectedDirectory + ';' + $pathDirectory }
+        Assert-That ($env:PATH -eq $expectedPath) 'CLI search order or PATH preservation changed'
+        Assert-That ((Get-Command docker.exe -CommandType Application).Source -eq (Join-Path $expectedDirectory 'docker.exe')) 'Docker CLI is not discoverable'
+        Initialize-InstallationDocker
+        Assert-That ($env:PATH -eq $expectedPath) 'Repeated setup duplicated PATH'
+        $childJson = & (Join-Path $PSHOME 'powershell.exe') -NoLogo -NoProfile -NonInteractive -Command '[pscustomobject]@{ Context = $env:DOCKER_CONTEXT; HostOverride = $env:DOCKER_HOST; Tls = $env:DOCKER_TLS_VERIFY; Cert = $env:DOCKER_CERT_PATH; Path = $env:PATH } | ConvertTo-Json -Compress'
+        Assert-That ($LASTEXITCODE -eq 0) 'Environment probe child failed'
+        $child = $childJson | ConvertFrom-Json
+        Assert-That ($child.Context -eq 'desktop-linux' -and $child.Path -eq $expectedPath) 'Child process lost Docker context or PATH'
+        Assert-That (-not $child.HostOverride -and -not $child.Tls -and -not $child.Cert) 'Child inherited remote Docker overrides'
+    }
+}
+finally {
+    foreach ($name in $saved.Keys) { [Environment]::SetEnvironmentVariable($name, $saved[$name], 'Process') }
+}
+'''.replace('__LOCATION__', location).replace('__OVERRIDES__', '$true' if inherited_overrides else '$false'))
+
+
+@pytest.mark.parametrize("failure", [
+    "schema", "schema-string", "scope", "qualified", "qualified-string", "missing-qualified",
+    "repository", "relative-repository", "missing-workflow", "missing-freeze", "missing-profile",
+    "profile-count", "profile-extra", "profile-scalar", "profile-order", "profile-duplicate",
+    "profile-qualified", "profile-missing-qualified", "profile-provider", "profile-model",
+    "profile-label", "profile-url", "profile-invalid-json", "manifest-invalid-json",
+    "freeze-absolute", "freeze-traversal", "freeze-outside", "freeze-prefix-sibling", "freeze-ads",
+    "freeze-wildcard", "freeze-drive-relative", "freeze-root-relative", "freeze-directory",
+    "profile-escape", "profile-absolute", "freeze-override", "relative-manifest", "missing-manifest",
+])
+def test_installer_gui_rejects_invalid_manifest(tmp_path, installation_gui_manifest, failure):
+    root, path, manifest = installation_gui_manifest
+    record = manifest["workflows"]["dependency-migration"]
+    profile_path = root / record["profiles"][0]
+    profile = json.loads(profile_path.read_text(encoding="utf-8"))
+    if failure in {"schema", "schema-string", "scope", "qualified", "qualified-string", "repository", "relative-repository"}:
+        field, value = {
+            "schema": ("schema_version", 2), "schema-string": ("schema_version", "1"),
+            "scope": ("scope", "historical"), "qualified": ("qualified", True),
+            "qualified-string": ("qualified", "false"), "repository": ("repository_root", str(tmp_path)),
+            "relative-repository": ("repository_root", "."),
+        }[failure]
+        manifest[field] = value
+    elif failure == "missing-qualified":
+        del manifest["qualified"]
+    elif failure == "missing-workflow":
+        del manifest["workflows"]["dependency-migration"]
+    elif failure == "missing-freeze":
+        (root / record["freeze"]).unlink()
+    elif failure == "missing-profile":
+        profile_path.unlink()
+    elif failure == "profile-count":
+        record["profiles"].pop()
+    elif failure == "profile-extra":
+        record["profiles"].append(record["profiles"][0])
+    elif failure == "profile-scalar":
+        record["profiles"] = record["profiles"][0]
+    elif failure == "profile-order":
+        record["profiles"][0], record["profiles"][1] = record["profiles"][1], record["profiles"][0]
+    elif failure == "profile-duplicate":
+        record["profiles"][1] = record["profiles"][0]
+    elif failure in {"profile-qualified", "profile-missing-qualified", "profile-provider", "profile-model", "profile-label", "profile-url"}:
+        if failure == "profile-missing-qualified":
+            del profile["qualified"]
+        else:
+            field, value = {"profile-qualified": ("qualified", True), "profile-provider": ("provider", "openai"),
+                            "profile-model": ("model", "wrong"), "profile-label": ("label", ""),
+                            "profile-url": ("base_url", None)}[failure]
+            profile[field] = value
+        bench.save(profile_path, profile)
+    elif failure == "profile-invalid-json":
+        profile_path.write_text("{", encoding="utf-8")
+    elif failure.startswith("freeze-") and failure != "freeze-override":
+        local = "dependency-migration/artifacts/installation-local"
+        record["freeze"] = {
+            "freeze-absolute": str(root / record["freeze"]),
+            "freeze-traversal": local + "/../outside.json", "freeze-outside": "outside.json",
+            "freeze-prefix-sibling": local + "-other/freeze.json", "freeze-ads": record["freeze"] + ":stream",
+            "freeze-wildcard": local + "/generation-test/*.json", "freeze-drive-relative": "C:freeze.json",
+            "freeze-root-relative": r"\freeze.json", "freeze-directory": local + "/profiles",
+        }[failure]
+        if failure in {"freeze-traversal", "freeze-outside", "freeze-prefix-sibling"}:
+            (root / record["freeze"]).parent.mkdir(parents=True, exist_ok=True)
+            bench.save(root / record["freeze"], {})
+    elif failure == "profile-escape":
+        record["profiles"][0] = "dependency-migration/profiles/article-27b.json"
+    elif failure == "profile-absolute":
+        record["profiles"][0] = str(profile_path)
+    bench.save(path, manifest)
+    if failure == "manifest-invalid-json":
+        path.write_text("{", encoding="utf-8")
+    if failure == "missing-manifest":
+        path.unlink()
+    extra = {"freeze-override": "$FreezePath = 'override.json'\n",
+             "relative-manifest": "$InstallationManifest = 'workflows.json'\n"}.get(failure, "")
+    run_controller_powershell(tmp_path, INSTALLATION_GUI_SETUP + extra + r'''
+$rejected = $false
+try { Initialize-InstallationController } catch { $rejected = $true }
+Assert-That $rejected 'Unsafe installation manifest was accepted'
+Assert-That ($script:dockerInitializations -eq 0) 'Rejected manifest initialized Docker'
+''')
+
+
+@pytest.mark.parametrize("workflow", ["dependency-migration", "security-repair", "regression-tests"])
+@pytest.mark.parametrize("override", [False, True])
+def test_installer_gui_no_manifest_preserves_historical_defaults(tmp_path, installation_gui_manifest, workflow, override):
+    run_controller_powershell(tmp_path, INSTALLATION_GUI_SETUP + r'''
+$Workflow = '__WORKFLOW__'
+$InstallationManifest = ''
+$FreezePath = __OVERRIDE__
+$dockerEnvironment = @{}
+foreach ($name in @('PATH', 'DOCKER_CONTEXT', 'DOCKER_HOST', 'DOCKER_TLS_VERIFY', 'DOCKER_CERT_PATH')) {
+    $dockerEnvironment[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
+}
+Initialize-InstallationController
+Assert-That ($script:dockerInitializations -eq 0) 'Historical mode initialized Docker'
+foreach ($name in $dockerEnvironment.Keys) {
+    Assert-That ([Environment]::GetEnvironmentVariable($name, 'Process') -ceq $dockerEnvironment[$name]) "Historical mode changed $name"
+}
+Assert-That ($null -eq $script:installationSettings) 'Historical mode loaded installed settings'
+Assert-That ($script:profilePaths[0] -eq 'ptl-morteza89-27b.private.json') 'Historical profiles changed'
+Assert-That ($script:workflowTitle -notlike '*INSTALLATION-LOCAL*') 'Historical title changed'
+$expected = if ($FreezePath) { [IO.Path]::GetFullPath($FreezePath) } else { Join-Path $script:workflowRoot ('artifacts\' + $script:freezeName) }
+Assert-That ($script:freezePath -eq $expected) 'Historical freeze or explicit override changed'
+$modelPicker = [pscustomobject]@{ SelectedIndex = 0 }
+$selected = Get-SelectedModel
+Assert-That ($selected.Path -eq (Join-Path $script:profileRoot $script:profilePaths[0])) 'Historical template fallback changed'
+'''.replace('__WORKFLOW__', workflow).replace('__OVERRIDE__', "'pending-freeze.json'" if override else "''"))
+
+
+@pytest.mark.parametrize("workflow", ["dependency-migration", "security-repair", "regression-tests"])
+@pytest.mark.parametrize("installed", [False, True])
+def test_installer_gui_direct_launch_quotes_paths_and_propagates_exit(tmp_path, workflow, installed):
+    if os.name != "nt":
+        pytest.skip("Windows PowerShell launch requires Windows")
+    root = tmp_path / "repository with spaces & punctuation"
+    engine = root / "dependency-migration"
+    engine.mkdir(parents=True)
+    controller = engine / "demo-controller.ps1"
+    controller.write_text(r'''
+param([string]$Workflow = 'dependency-migration', [string]$InstallationManifest)
+$record = @{ workflow = $Workflow; manifest = $InstallationManifest; version = $PSVersionTable.PSVersion.Major }
+[IO.File]::WriteAllText($env:LAUNCHER_TEST_RESULT, ($record | ConvertTo-Json))
+exit 17
+''', encoding="utf-8")
+    manifest = engine / "artifacts/installation-local/workflows.json"
+    if installed:
+        manifest.parent.mkdir(parents=True)
+        bench.save(manifest, {})
+    output = tmp_path / "launcher-result.json"
+    environment = dict(os.environ, LAUNCHER_TEST_RESULT=str(output))
+    environment.pop("PSModulePath", None)
+    powershell = Path(os.environ["SystemRoot"]) / "System32/WindowsPowerShell/v1.0/powershell.exe"
+    arguments = [str(powershell), "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(controller),
+                 "-Workflow", workflow]
+    if installed:
+        arguments.extend(["-InstallationManifest", str(manifest)])
+    result = subprocess.run(arguments,
+                            cwd=tmp_path, env=environment, capture_output=True, text=True, timeout=45)
+    assert result.returncode == 17, result.stdout + result.stderr
+    record = json.loads(output.read_text(encoding="utf-8"))
+    assert record["workflow"] == workflow
+    assert record["version"] == 5
+    if installed:
+        assert Path(record["manifest"]).is_absolute()
+        assert Path(record["manifest"]).resolve() == manifest.resolve()
+    else:
+        assert not record["manifest"]
