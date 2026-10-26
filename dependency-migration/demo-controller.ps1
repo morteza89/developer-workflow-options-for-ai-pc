@@ -113,7 +113,7 @@ $script:templatePaths = @(
 $script:installationManifestDigest = if ($InstallationManifest) { (Get-FileHash -LiteralPath $InstallationManifest -Algorithm SHA256 -ErrorAction Stop).Hash } else { $null }
 $script:installationSettings = if ($InstallationManifest) { Get-InstallationSettings $InstallationManifest $script:workspaceRoot $Workflow $FreezePath } else { $null }
 if ($script:installationSettings) { Initialize-InstallationDocker }
-$script:freezeName = if ($Workflow -eq 'dependency-migration') { 'freeze-600s-v10.json' } else { (Get-Content -Raw (Join-Path $script:workflowRoot 'workflow.json') | ConvertFrom-Json).default_freeze }
+$script:freezeName = if ($Workflow -eq 'dependency-migration') { 'freeze-600s-v11.json' } else { (Get-Content -Raw (Join-Path $script:workflowRoot 'workflow.json') | ConvertFrom-Json).default_freeze }
 $script:freezePath = if ($script:installationSettings) { $script:installationSettings.Freeze } elseif ($FreezePath) { [IO.Path]::GetFullPath($FreezePath) } else { Join-Path $script:workflowRoot ('artifacts\' + $script:freezeName) }
 $script:deadlineSeconds = (Get-Content -Raw (Join-Path $script:workflowRoot 'policy.json') | ConvertFrom-Json).deadline_seconds
 $script:artifactRoot = Join-Path $script:workflowRoot 'artifacts'
@@ -132,6 +132,7 @@ $script:setupSelection = $null
 $script:taskProcess = $null
 $script:serverReady = $false
 $script:warmupReady = $false
+$script:warmupModel = $null
 $script:openReportPath = $null
 $script:watchFiles = @{}
 $script:profilePaths = if ((Test-Path variable:script:installationSettings) -and $script:installationSettings) { $script:installationSettings.Profiles } else { @(
@@ -570,19 +571,19 @@ function Start-LocalServer($selected) {
             $launcher = Join-Path $script:modelRoot 'start-27b-article.cmd'
             $modelFile = Join-Path $script:modelRoot 'morteza89-qwen3.8-27b-int4-ov\openvino_language_model.xml'
             if (-not (Test-Path $launcher) -or -not (Test-Path $modelFile)) { throw 'The pinned 27B launcher or model files are missing; see MODELS.md.' }
-            [System.IO.File]::WriteAllText($wrapper, "@echo off`r`ncall `"$launcher`"`r`n", [System.Text.Encoding]::ASCII)
+            [System.IO.File]::WriteAllText($wrapper, "@echo off`r`nset `"API_KEY=`"`r`ncall `"$launcher`"`r`n", [System.Text.Encoding]::ASCII)
         }
         elseif ($selected.Profile.model -eq 'qwen3-coder-30b-a3b-ov') {
             $launcher = Join-Path $script:modelRoot 'start-qwen3-coder-30b.cmd'
             $modelFile = Join-Path $script:modelRoot 'qwen3-coder-30b-a3b-int4-ov\openvino_model.xml'
             if (-not (Test-Path $launcher) -or -not (Test-Path $modelFile)) { throw 'The pinned Qwen3-Coder launcher or model files are missing; see README.md.' }
-            [System.IO.File]::WriteAllText($wrapper, "@echo off`r`ncall `"$launcher`"`r`n", [System.Text.Encoding]::ASCII)
+            [System.IO.File]::WriteAllText($wrapper, "@echo off`r`nset `"API_KEY=`"`r`ncall `"$launcher`"`r`n", [System.Text.Encoding]::ASCII)
         }
         elseif ($selected.Profile.model -eq 'qwen38-fable5-int4') {
             $launcher = Join-Path $script:modelRoot 'start-qwen38-fable5-coding-27b.cmd'
             $modelFile = Join-Path $script:modelRoot 'qwen3.8-27b-fable-5-coding-distilled-int4-ov\openvino_language_model.xml'
             if (-not (Test-Path $launcher) -or -not (Test-Path $modelFile)) { throw 'The pinned Qwen3.8 Fable 5 launcher or model files are missing; see README.md.' }
-            [System.IO.File]::WriteAllText($wrapper, "@echo off`r`ncall `"$launcher`"`r`n", [System.Text.Encoding]::ASCII)
+            [System.IO.File]::WriteAllText($wrapper, "@echo off`r`nset `"API_KEY=`"`r`ncall `"$launcher`"`r`n", [System.Text.Encoding]::ASCII)
         }
         elseif ($selected.Profile.model -eq 'OpenVINO/Qwen3-8B-int8-ov') {
             $setupvars = Join-Path $script:ovmsRoot 'setupvars.bat'
@@ -612,6 +613,16 @@ function Stop-ModelPreparation {
     $script:serverReady = $false
     $script:warmupReady = $false
     Write-Log 'Model preparation canceled. Downloaded data is retained; Start selected local model will resume preparation.'
+}
+
+function Stop-ActivePilot {
+    if ($script:taskProcess -and -not $script:taskProcess.HasExited) {
+        $stopped = Start-Process -FilePath 'taskkill.exe' -ArgumentList "/PID $($script:taskProcess.Id) /T /F" -WindowStyle Hidden -Wait -PassThru
+        if ($stopped.ExitCode -ne 0 -and -not $script:taskProcess.HasExited) { throw 'Could not stop the running pilot. Keep this window open and retry closing.' }
+    }
+    $script:taskProcess = $null
+    $script:openReportPath = $null
+    Write-Log 'Stopped the running pilot process tree. Attempt artifacts are retained.'
 }
 
 function Update-ModelPreparation {
@@ -685,7 +696,9 @@ $warmupButton.Add_Click({
             if ($confirm -ne 'Yes') { return }
         }
         $script:warmupReady = $false
+        $script:warmupModel = $null
         $warmupButton.Enabled = $false
+        $modelPicker.Enabled = $false
         $form.Cursor = [System.Windows.Forms.Cursors]::WaitCursor
         Write-Log "Testing $($selected.Name) with a small READY request..."
         [System.Windows.Forms.Application]::DoEvents()
@@ -704,8 +717,15 @@ $warmupButton.Add_Click({
             $text = $response.choices[0].message.content
         }
         if ($response.model -ne $selected.Profile.expected_returned_model -or $text -notmatch 'READY') { throw "Unexpected warmup identity or output. Returned model: $($response.model); output: $text" }
-        $script:warmupReady = $true
-        Write-Log "Warmup passed: $($response.model) returned READY. Usage: $($response.usage | ConvertTo-Json -Compress -Depth 5)"
+        $current = Get-SelectedModel
+        if ($current.Profile.model -ne $selected.Profile.model) {
+            Write-Log "Selection changed during the warmup (now $($current.Name)); readiness was not recorded. Test the connection again."
+        }
+        else {
+            $script:warmupReady = $true
+            $script:warmupModel = $selected.Profile.model
+            Write-Log "Warmup passed: $($response.model) returned READY. Usage: $($response.usage | ConvertTo-Json -Compress -Depth 5)"
+        }
     }
     catch {
         $message = $_.Exception.Message -replace 'sk-[A-Za-z0-9_-]{20,}', '[REDACTED]'
@@ -721,8 +741,10 @@ $warmupButton.Add_Click({
 $runButton.Add_Click({
     try {
         if ($script:setupProcess) { throw 'Wait for model preparation to finish before running a pilot.' }
+        if ($script:taskProcess -and -not $script:taskProcess.HasExited) { throw 'A pilot is already running. Wait for it to finish before starting another.' }
         if ((Test-Path variable:script:installationSettings) -and $script:installationSettings) { Assert-InstallationCurrent }
         $selected = Get-SelectedModel
+        if ($script:warmupReady -and $script:warmupModel -ne $selected.Profile.model) { throw "Test connection passed for $script:warmupModel, not the selected $($selected.Profile.model). Test the connection again." }
         if ($selected.Profile.provider -eq 'local' -and -not ($script:serverReady -or $script:warmupReady)) { throw 'Start the selected local server and pass Test connection first.' }
         if ($selected.Profile.provider -eq 'openai' -and [string]::IsNullOrWhiteSpace($env:OPENAI_API_KEY)) { throw 'OPENAI_API_KEY is not set in the PowerShell process that launched this controller.' }
         if ($selected.Profile.provider -eq 'openai') {
@@ -771,14 +793,15 @@ $comparisonButton.Add_Click({
         $args += @('--profile', $resolvedProfile)
     }
     $quoted = foreach ($arg in $args) { if ($arg -match '\s') { '"' + $arg.Replace('"', '\"') + '"' } else { $arg } }
-    $script:openReportPath = $reportPath
     $script:taskProcess = Start-TrackedProcess $script:runnerPython ($quoted -join ' ') $script:workflowRoot 'comparison-report'
+    $script:openReportPath = $reportPath
     Write-Log 'Generating a comparison from attempts matching the selected freeze; the report will open when ready.'
     Update-Status
 })
 
 $modelPicker.Add_SelectedIndexChanged({
     $script:warmupReady = $false
+    $script:warmupModel = $null
     Update-Status
     Update-ThroughputStatus
 })
@@ -803,11 +826,11 @@ $timer.Add_Tick({
         if ($script:openReportPath) {
             $reportPath = $script:openReportPath
             $script:openReportPath = $null
-            if (Test-Path $reportPath) {
+            if ($taskExitCode -eq 0 -and (Test-Path $reportPath)) {
                 Write-Log "Opening comparison report: $reportPath"
                 Start-Process -FilePath $reportPath
             }
-            else { Write-Log 'Comparison report generation failed; inspect the process output above.' }
+            else { Write-Log "Comparison report generation failed (exit $taskExitCode); inspect the process output above." }
         }
         Update-ThroughputStatus
     }
@@ -815,11 +838,18 @@ $timer.Add_Tick({
 })
 
 $form.Add_FormClosing({
+    $closingEvent = $_
+    if ($script:taskProcess -and -not $script:taskProcess.HasExited) {
+        $choice = [System.Windows.Forms.MessageBox]::Show('A pilot is running (possibly billable). Stop it and close? Yes stops the pilot (attempt artifacts are retained); No cancels closing.', 'Pilot running', 'YesNo', 'Warning')
+        if ($choice -ne 'Yes') { $_.Cancel = $true; return }
+        try { Stop-ActivePilot }
+        catch { Write-Log $_.Exception.Message; $closingEvent.Cancel = $true; return }
+    }
     if ($script:setupProcess) {
         $choice = [System.Windows.Forms.MessageBox]::Show('Cancel model preparation and close? Downloaded data will be kept for retry.', 'Model download active', 'YesNo', 'Question')
         if ($choice -ne 'Yes') { $_.Cancel = $true; return }
         try { Stop-ModelPreparation }
-        catch { Write-Log $_.Exception.Message; $_.Cancel = $true; return }
+        catch { Write-Log $_.Exception.Message; $closingEvent.Cancel = $true; return }
     }
     if ($script:serverProcess -and -not $script:serverProcess.HasExited) {
         $choice = [System.Windows.Forms.MessageBox]::Show('A local server started by this controller is still running. Stop it before closing?', 'Local server running', 'YesNoCancel', 'Question')

@@ -3,3 +3,8 @@ __pycache__/
 .pytest_cache/
 artifacts/*
 !artifacts/freeze-*.json
+!artifacts/comparison-report-*.md
+!artifacts/attempt-*/
+artifacts/attempt-*/*
+!artifacts/attempt-*/result.json
+!artifacts/attempt-*/freeze.json

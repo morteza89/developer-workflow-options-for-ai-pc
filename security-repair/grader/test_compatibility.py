@@ -50,3 +50,30 @@ def test_invalid_eddsa_key_uses_invalid_key_error_contract():
         OKPAlgorithm().prepare_key(None)
     with pytest.raises(jwt.InvalidKeyError):
         OKPAlgorithm().prepare_key(b"not a serialized key")
+
+
+@pytest.mark.parametrize(
+    ("algorithm", "curve"),
+    [("ES256", ec.SECP256R1), ("ES384", ec.SECP384R1), ("ES512", ec.SECP521R1)],
+)
+def test_ecdsa_openssh_public_keys_still_verify(algorithm, curve):
+    claims = {"sub": algorithm}
+    private = ec.generate_private_key(curve())
+    public_ssh = private.public_key().public_bytes(
+        serialization.Encoding.OpenSSH,
+        serialization.PublicFormat.OpenSSH,
+    )
+    assert public_ssh.startswith(b"ecdsa-sha2-nistp")
+    token = jwt.encode(claims, _pem_private(private), algorithm=algorithm)
+    assert jwt.decode(token, public_ssh, algorithms=[algorithm]) == claims
+
+
+def test_rsa_openssh_public_key_still_verifies():
+    claims = {"sub": "ssh-rsa"}
+    private = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    public_ssh = private.public_key().public_bytes(
+        serialization.Encoding.OpenSSH,
+        serialization.PublicFormat.OpenSSH,
+    )
+    token = jwt.encode(claims, _pem_private(private), algorithm="RS256")
+    assert jwt.decode(token, public_ssh, algorithms=["RS256"]) == claims

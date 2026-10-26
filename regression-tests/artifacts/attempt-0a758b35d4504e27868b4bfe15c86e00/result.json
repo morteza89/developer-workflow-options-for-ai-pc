@@ -1,0 +1,2021 @@
+{
+  "attempt_id": "attempt-0a758b35d4504e27868b4bfe15c86e00",
+  "created_at": "2026-10-21T19:03:31.661994+00:00",
+  "label": "ptl-openai-gpt-6-astra",
+  "scored": false,
+  "mock": false,
+  "image": "sha256:2297cd12645d7a77fad76bfc45fdcadf67a3fab99bfd4c098c56ce68acba6842",
+  "runner": {
+    "python": "3.11.15 (main, Jun 11 2026, 04:59:07) [MSC v.1944 64 bit (AMD64)]",
+    "packages": {
+      "aiohappyeyeballs": "2.7.1",
+      "aiohttp": "3.14.3",
+      "aiosignal": "1.4.0",
+      "annotated-doc": "0.0.5",
+      "annotated-types": "0.8.0",
+      "anthropic": "0.72.0",
+      "anyio": "4.15.1",
+      "attrs": "26.1.0",
+      "boto3": "1.43.108",
+      "botocore": "1.43.108",
+      "certifi": "2026.7.22",
+      "charset-normalizer": "3.5.2",
+      "click": "8.5.0",
+      "colorama": "0.4.6",
+      "datasets": "5.1.0",
+      "dill": "0.4.1",
+      "distro": "1.9.0",
+      "docstring-parser": "0.18.0",
+      "fastuuid": "0.14.0",
+      "filelock": "3.32.7",
+      "frozenlist": "1.8.0",
+      "fsspec": "2026.7.0",
+      "h11": "0.16.0",
+      "h2": "4.4.1",
+      "hf-xet": "1.6.0",
+      "hpack": "4.2.0",
+      "httpcore": "1.0.9",
+      "httpx": "0.28.1",
+      "huggingface-hub": "1.33.0",
+      "hyperframe": "6.1.0",
+      "idna": "3.20",
+      "importlib-metadata": "8.9.0",
+      "iniconfig": "2.3.0",
+      "jinja2": "3.1.6",
+      "jiter": "0.17.0",
+      "jmespath": "1.1.0",
+      "jsonschema": "4.26.0",
+      "jsonschema-specifications": "2025.9.1",
+      "linkify-it-py": "2.2.0",
+      "litellm": "1.104.0",
+      "markdown-it-py": "4.2.0",
+      "markupsafe": "3.0.4",
+      "mdit-py-plugins": "0.6.1",
+      "mdurl": "0.1.2",
+      "mini-swe-agent": "2.4.6",
+      "multidict": "6.9.1",
+      "multiprocess": "0.70.19",
+      "numpy": "2.4.6",
+      "openai": "2.54.0",
+      "packaging": "26.3",
+      "pandas": "3.0.6",
+      "platformdirs": "4.12.3",
+      "pluggy": "1.6.0",
+      "prompt-toolkit": "3.0.53",
+      "propcache": "0.5.4",
+      "pyarrow": "25.0.1",
+      "pydantic": "2.13.5",
+      "pydantic-core": "2.46.5",
+      "pydantic-settings": "2.15.0",
+      "pygments": "2.21.0",
+      "pytest": "8.4.2",
+      "python-dateutil": "2.9.0.post0",
+      "python-dotenv": "1.2.4",
+      "pyyaml": "6.0.3",
+      "referencing": "0.37.0",
+      "regex": "2026.9.29",
+      "requests": "2.34.2",
+      "rich": "15.0.0",
+      "rpds-py": "2026.9.1",
+      "s3transfer": "0.19.2",
+      "shellingham": "1.5.4",
+      "six": "1.17.0",
+      "sniffio": "1.3.1",
+      "tenacity": "9.1.4",
+      "textual": "8.2.8",
+      "tiktoken": "0.14.0",
+      "tokenizers": "0.23.2",
+      "tqdm": "4.70.1",
+      "typer": "0.27.2",
+      "typing-extensions": "4.16.0",
+      "typing-inspection": "0.4.4",
+      "tzdata": "2026.5",
+      "urllib3": "2.8.0",
+      "wcwidth": "0.9.2",
+      "xxhash": "4.0.1",
+      "yarl": "1.25.1",
+      "zipp": "4.1.1"
+    }
+  },
+  "task_hash": "a841892ff8cc9774343eb1642a78cffaa1e5918865fb831e8aad923997c2a419",
+  "profile_hash": "299fee65c5911a4df507ec870a8e84305e404889ea201502ee5165fecb5292d0",
+  "accepted": true,
+  "category": "accepted",
+  "agent_seconds": 59.63776460001827,
+  "verifier_seconds": 14.66745930002071,
+  "api_fee_usd": 0.218972,
+  "provider": "openai",
+  "model": "gpt-6-astra",
+  "submission_checks": 0,
+  "rejected_submissions": 0,
+  "submission_check_seconds": 0.0,
+  "execution_mode": "deadline",
+  "deadline_seconds": 720,
+  "submission_seconds": 59.56551730001229,
+  "worker_outcome": {
+    "kind": "finished",
+    "at": 138197.6776017,
+    "result": {
+      "exit_status": "Submitted",
+      "submission": "Regression tests complete\n"
+    }
+  },
+  "cutoff_overrun_seconds": 0,
+  "exit_status": "Submitted",
+  "submission_violations": [],
+  "through_verification_seconds": 74.58965919999173,
+  "verification": {
+    "accepted": true,
+    "category": "accepted",
+    "checks": {
+      "contract": true,
+      "generated": true,
+      "fault_overwrite_existing_scheme": true,
+      "fault_lose_query": true,
+      "fault_drop_port": true,
+      "fault_lose_credentials_adding_scheme": true,
+      "fault_fail_percent_decode_credentials": true,
+      "fault_wrong_missing_credential_value": true,
+      "fault_retain_fragment": true,
+      "fault_retain_auth_cleanup": true
+    },
+    "faults_detected": 8,
+    "faults_total": 8,
+    "test_results": {
+      "contract": {
+        "total": 9,
+        "passed": 9,
+        "failed": 0,
+        "errors": 0,
+        "skipped": 0,
+        "cases": [
+          {
+            "name": "test_import_contract",
+            "classname": "test_witnesses",
+            "status": "passed"
+          },
+          {
+            "name": "test_overwrite_existing_scheme",
+            "classname": "test_witnesses",
+            "status": "passed"
+          },
+          {
+            "name": "test_lose_query",
+            "classname": "test_witnesses",
+            "status": "passed"
+          },
+          {
+            "name": "test_drop_port",
+            "classname": "test_witnesses",
+            "status": "passed"
+          },
+          {
+            "name": "test_lose_credentials_adding_scheme",
+            "classname": "test_witnesses",
+            "status": "passed"
+          },
+          {
+            "name": "test_fail_percent_decode_credentials",
+            "classname": "test_witnesses",
+            "status": "passed"
+          },
+          {
+            "name": "test_wrong_missing_credential_value",
+            "classname": "test_witnesses",
+            "status": "passed"
+          },
+          {
+            "name": "test_retain_fragment",
+            "classname": "test_witnesses",
+            "status": "passed"
+          },
+          {
+            "name": "test_retain_auth_cleanup",
+            "classname": "test_witnesses",
+            "status": "passed"
+          }
+        ]
+      },
+      "generated": {
+        "total": 38,
+        "passed": 38,
+        "failed": 0,
+        "errors": 0,
+        "skipped": 0,
+        "cases": [
+          {
+            "name": "test_prepend_scheme_preserves_url_components[example.org/a-https-https://example.org/a]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_prepend_scheme_preserves_url_components[example.org-http-http://example.org]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_prepend_scheme_preserves_url_components[//example.org/a-https-https://example.org/a]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_prepend_scheme_preserves_url_components[example.org:8443/a/b?next=%2Fhome&x=1#section-https-https://example.org:8443/a/b?next=%2Fhome&x=1#section]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_prepend_scheme_preserves_url_components[//user:password@example.org:8080/path?x=1&y=2#part-https-https://user:password@example.org:8080/path?x=1&y=2#part]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_prepend_scheme_preserves_url_components[//u%40name:p%3Ass@example.org/path-http-http://u%40name:p%3Ass@example.org/path]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_prepend_scheme_preserves_url_components[http://example.org/a-https-http://example.org/a]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_prepend_scheme_preserves_url_components[https://example.org/a-http-https://example.org/a]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_prepend_scheme_preserves_url_components[http://user:password@example.org:8080/a;b?x=1&y=2#part-https-http://user:password@example.org:8080/a;b?x=1&y=2#part]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_prepend_scheme_preserves_url_components[https://u%40name:p%3Ass@example.org:443/?q=a%20b#frag-http-https://u%40name:p%3Ass@example.org:443/?q=a%20b#frag]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_prepend_scheme_preserves_url_components[ftp://example.org/pub/file-https-ftp://example.org/pub/file]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://user:password@example.org/path-expected0]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[http://alice:s3cret@example.org:8080/a?x=1#part-expected1]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://first%20last:p%40ss%3Aword%2F%3F%23%20x@example.org/-expected2]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://u%40%3A%2F%3F%23:p%20word@example.org/-expected3]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://a+b:c+d@example.org/-expected4]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://u%2520:p%2540@example.org/-expected5]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://example.org/-expected6]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://example.org/a?user=name&password=secret#user:pass-expected7]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://username@example.org/-expected8]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://username:@example.org/-expected9]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://first%20last:@example.org/-expected10]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://:@example.org/-expected11]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[//user:password@example.org/path-expected12]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[https://user:password@example.org:8443/a/b;v=1?x=2&y=3#section-https://example.org:8443/a/b;v=1?x=2&y=3]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[http://user:password@example.org/path-http://example.org/path]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[https://username@example.org/a-https://example.org/a]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[https://username:@example.org/a#f-https://example.org/a]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[https://user:p@ss@word@example.org:9443/a;p?q=1#frag-https://example.org:9443/a;p?q=1]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[http://u%40name:p%3Ass@example.org:80/a%23b;p?q=%40%23#frag-http://example.org:80/a%23b;p?q=%40%23]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[https://example.org:443/a;b?x=1&y=2#fragment-https://example.org:443/a;b?x=1&y=2]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[https://example.org:443/a;b?x=1&y=2-https://example.org:443/a;b?x=1&y=2]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[http://example.org-http://example.org]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[https://example.org/#-https://example.org/]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[https://example.org/a@b;p?q=user@host-https://example.org/a@b;p?q=user@host]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[https://u:p@example.org/a@b;p?q=user@host#other@host-https://example.org/a@b;p?q=user@host]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[//user:pass@example.org:8080/a;p?q=1#part-//example.org:8080/a;p?q=1]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[https://u:p@[2001:db8::1]:8443/a?x=1#part-https://[2001:db8::1]:8443/a?x=1]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          }
+        ]
+      },
+      "fault_overwrite_existing_scheme": {
+        "total": 38,
+        "passed": 33,
+        "failed": 5,
+        "errors": 0,
+        "skipped": 0,
+        "cases": [
+          {
+            "name": "test_prepend_scheme_preserves_url_components[example.org/a-https-https://example.org/a]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_prepend_scheme_preserves_url_components[example.org-http-http://example.org]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_prepend_scheme_preserves_url_components[//example.org/a-https-https://example.org/a]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_prepend_scheme_preserves_url_components[example.org:8443/a/b?next=%2Fhome&x=1#section-https-https://example.org:8443/a/b?next=%2Fhome&x=1#section]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_prepend_scheme_preserves_url_components[//user:password@example.org:8080/path?x=1&y=2#part-https-https://user:password@example.org:8080/path?x=1&y=2#part]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_prepend_scheme_preserves_url_components[//u%40name:p%3Ass@example.org/path-http-http://u%40name:p%3Ass@example.org/path]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_prepend_scheme_preserves_url_components[http://example.org/a-https-http://example.org/a]",
+            "classname": "tests.test_generated",
+            "status": "failed"
+          },
+          {
+            "name": "test_prepend_scheme_preserves_url_components[https://example.org/a-http-https://example.org/a]",
+            "classname": "tests.test_generated",
+            "status": "failed"
+          },
+          {
+            "name": "test_prepend_scheme_preserves_url_components[http://user:password@example.org:8080/a;b?x=1&y=2#part-https-http://user:password@example.org:8080/a;b?x=1&y=2#part]",
+            "classname": "tests.test_generated",
+            "status": "failed"
+          },
+          {
+            "name": "test_prepend_scheme_preserves_url_components[https://u%40name:p%3Ass@example.org:443/?q=a%20b#frag-http-https://u%40name:p%3Ass@example.org:443/?q=a%20b#frag]",
+            "classname": "tests.test_generated",
+            "status": "failed"
+          },
+          {
+            "name": "test_prepend_scheme_preserves_url_components[ftp://example.org/pub/file-https-ftp://example.org/pub/file]",
+            "classname": "tests.test_generated",
+            "status": "failed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://user:password@example.org/path-expected0]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[http://alice:s3cret@example.org:8080/a?x=1#part-expected1]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://first%20last:p%40ss%3Aword%2F%3F%23%20x@example.org/-expected2]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://u%40%3A%2F%3F%23:p%20word@example.org/-expected3]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://a+b:c+d@example.org/-expected4]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://u%2520:p%2540@example.org/-expected5]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://example.org/-expected6]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://example.org/a?user=name&password=secret#user:pass-expected7]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://username@example.org/-expected8]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://username:@example.org/-expected9]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://first%20last:@example.org/-expected10]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://:@example.org/-expected11]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[//user:password@example.org/path-expected12]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[https://user:password@example.org:8443/a/b;v=1?x=2&y=3#section-https://example.org:8443/a/b;v=1?x=2&y=3]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[http://user:password@example.org/path-http://example.org/path]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[https://username@example.org/a-https://example.org/a]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[https://username:@example.org/a#f-https://example.org/a]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[https://user:p@ss@word@example.org:9443/a;p?q=1#frag-https://example.org:9443/a;p?q=1]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[http://u%40name:p%3Ass@example.org:80/a%23b;p?q=%40%23#frag-http://example.org:80/a%23b;p?q=%40%23]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[https://example.org:443/a;b?x=1&y=2#fragment-https://example.org:443/a;b?x=1&y=2]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[https://example.org:443/a;b?x=1&y=2-https://example.org:443/a;b?x=1&y=2]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[http://example.org-http://example.org]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[https://example.org/#-https://example.org/]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[https://example.org/a@b;p?q=user@host-https://example.org/a@b;p?q=user@host]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[https://u:p@example.org/a@b;p?q=user@host#other@host-https://example.org/a@b;p?q=user@host]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[//user:pass@example.org:8080/a;p?q=1#part-//example.org:8080/a;p?q=1]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[https://u:p@[2001:db8::1]:8443/a?x=1#part-https://[2001:db8::1]:8443/a?x=1]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          }
+        ]
+      },
+      "fault_lose_query": {
+        "total": 38,
+        "passed": 34,
+        "failed": 4,
+        "errors": 0,
+        "skipped": 0,
+        "cases": [
+          {
+            "name": "test_prepend_scheme_preserves_url_components[example.org/a-https-https://example.org/a]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_prepend_scheme_preserves_url_components[example.org-http-http://example.org]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_prepend_scheme_preserves_url_components[//example.org/a-https-https://example.org/a]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_prepend_scheme_preserves_url_components[example.org:8443/a/b?next=%2Fhome&x=1#section-https-https://example.org:8443/a/b?next=%2Fhome&x=1#section]",
+            "classname": "tests.test_generated",
+            "status": "failed"
+          },
+          {
+            "name": "test_prepend_scheme_preserves_url_components[//user:password@example.org:8080/path?x=1&y=2#part-https-https://user:password@example.org:8080/path?x=1&y=2#part]",
+            "classname": "tests.test_generated",
+            "status": "failed"
+          },
+          {
+            "name": "test_prepend_scheme_preserves_url_components[//u%40name:p%3Ass@example.org/path-http-http://u%40name:p%3Ass@example.org/path]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_prepend_scheme_preserves_url_components[http://example.org/a-https-http://example.org/a]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_prepend_scheme_preserves_url_components[https://example.org/a-http-https://example.org/a]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_prepend_scheme_preserves_url_components[http://user:password@example.org:8080/a;b?x=1&y=2#part-https-http://user:password@example.org:8080/a;b?x=1&y=2#part]",
+            "classname": "tests.test_generated",
+            "status": "failed"
+          },
+          {
+            "name": "test_prepend_scheme_preserves_url_components[https://u%40name:p%3Ass@example.org:443/?q=a%20b#frag-http-https://u%40name:p%3Ass@example.org:443/?q=a%20b#frag]",
+            "classname": "tests.test_generated",
+            "status": "failed"
+          },
+          {
+            "name": "test_prepend_scheme_preserves_url_components[ftp://example.org/pub/file-https-ftp://example.org/pub/file]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://user:password@example.org/path-expected0]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[http://alice:s3cret@example.org:8080/a?x=1#part-expected1]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://first%20last:p%40ss%3Aword%2F%3F%23%20x@example.org/-expected2]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://u%40%3A%2F%3F%23:p%20word@example.org/-expected3]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://a+b:c+d@example.org/-expected4]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://u%2520:p%2540@example.org/-expected5]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://example.org/-expected6]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://example.org/a?user=name&password=secret#user:pass-expected7]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://username@example.org/-expected8]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://username:@example.org/-expected9]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://first%20last:@example.org/-expected10]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://:@example.org/-expected11]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[//user:password@example.org/path-expected12]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[https://user:password@example.org:8443/a/b;v=1?x=2&y=3#section-https://example.org:8443/a/b;v=1?x=2&y=3]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[http://user:password@example.org/path-http://example.org/path]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[https://username@example.org/a-https://example.org/a]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[https://username:@example.org/a#f-https://example.org/a]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[https://user:p@ss@word@example.org:9443/a;p?q=1#frag-https://example.org:9443/a;p?q=1]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[http://u%40name:p%3Ass@example.org:80/a%23b;p?q=%40%23#frag-http://example.org:80/a%23b;p?q=%40%23]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[https://example.org:443/a;b?x=1&y=2#fragment-https://example.org:443/a;b?x=1&y=2]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[https://example.org:443/a;b?x=1&y=2-https://example.org:443/a;b?x=1&y=2]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[http://example.org-http://example.org]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[https://example.org/#-https://example.org/]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[https://example.org/a@b;p?q=user@host-https://example.org/a@b;p?q=user@host]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[https://u:p@example.org/a@b;p?q=user@host#other@host-https://example.org/a@b;p?q=user@host]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[//user:pass@example.org:8080/a;p?q=1#part-//example.org:8080/a;p?q=1]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[https://u:p@[2001:db8::1]:8443/a?x=1#part-https://[2001:db8::1]:8443/a?x=1]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          }
+        ]
+      },
+      "fault_drop_port": {
+        "total": 38,
+        "passed": 34,
+        "failed": 4,
+        "errors": 0,
+        "skipped": 0,
+        "cases": [
+          {
+            "name": "test_prepend_scheme_preserves_url_components[example.org/a-https-https://example.org/a]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_prepend_scheme_preserves_url_components[example.org-http-http://example.org]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_prepend_scheme_preserves_url_components[//example.org/a-https-https://example.org/a]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_prepend_scheme_preserves_url_components[example.org:8443/a/b?next=%2Fhome&x=1#section-https-https://example.org:8443/a/b?next=%2Fhome&x=1#section]",
+            "classname": "tests.test_generated",
+            "status": "failed"
+          },
+          {
+            "name": "test_prepend_scheme_preserves_url_components[//user:password@example.org:8080/path?x=1&y=2#part-https-https://user:password@example.org:8080/path?x=1&y=2#part]",
+            "classname": "tests.test_generated",
+            "status": "failed"
+          },
+          {
+            "name": "test_prepend_scheme_preserves_url_components[//u%40name:p%3Ass@example.org/path-http-http://u%40name:p%3Ass@example.org/path]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_prepend_scheme_preserves_url_components[http://example.org/a-https-http://example.org/a]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_prepend_scheme_preserves_url_components[https://example.org/a-http-https://example.org/a]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_prepend_scheme_preserves_url_components[http://user:password@example.org:8080/a;b?x=1&y=2#part-https-http://user:password@example.org:8080/a;b?x=1&y=2#part]",
+            "classname": "tests.test_generated",
+            "status": "failed"
+          },
+          {
+            "name": "test_prepend_scheme_preserves_url_components[https://u%40name:p%3Ass@example.org:443/?q=a%20b#frag-http-https://u%40name:p%3Ass@example.org:443/?q=a%20b#frag]",
+            "classname": "tests.test_generated",
+            "status": "failed"
+          },
+          {
+            "name": "test_prepend_scheme_preserves_url_components[ftp://example.org/pub/file-https-ftp://example.org/pub/file]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://user:password@example.org/path-expected0]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[http://alice:s3cret@example.org:8080/a?x=1#part-expected1]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://first%20last:p%40ss%3Aword%2F%3F%23%20x@example.org/-expected2]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://u%40%3A%2F%3F%23:p%20word@example.org/-expected3]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://a+b:c+d@example.org/-expected4]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://u%2520:p%2540@example.org/-expected5]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://example.org/-expected6]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://example.org/a?user=name&password=secret#user:pass-expected7]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://username@example.org/-expected8]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://username:@example.org/-expected9]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://first%20last:@example.org/-expected10]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://:@example.org/-expected11]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[//user:password@example.org/path-expected12]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[https://user:password@example.org:8443/a/b;v=1?x=2&y=3#section-https://example.org:8443/a/b;v=1?x=2&y=3]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[http://user:password@example.org/path-http://example.org/path]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[https://username@example.org/a-https://example.org/a]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[https://username:@example.org/a#f-https://example.org/a]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[https://user:p@ss@word@example.org:9443/a;p?q=1#frag-https://example.org:9443/a;p?q=1]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[http://u%40name:p%3Ass@example.org:80/a%23b;p?q=%40%23#frag-http://example.org:80/a%23b;p?q=%40%23]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[https://example.org:443/a;b?x=1&y=2#fragment-https://example.org:443/a;b?x=1&y=2]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[https://example.org:443/a;b?x=1&y=2-https://example.org:443/a;b?x=1&y=2]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[http://example.org-http://example.org]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[https://example.org/#-https://example.org/]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[https://example.org/a@b;p?q=user@host-https://example.org/a@b;p?q=user@host]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[https://u:p@example.org/a@b;p?q=user@host#other@host-https://example.org/a@b;p?q=user@host]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[//user:pass@example.org:8080/a;p?q=1#part-//example.org:8080/a;p?q=1]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[https://u:p@[2001:db8::1]:8443/a?x=1#part-https://[2001:db8::1]:8443/a?x=1]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          }
+        ]
+      },
+      "fault_lose_credentials_adding_scheme": {
+        "total": 38,
+        "passed": 34,
+        "failed": 4,
+        "errors": 0,
+        "skipped": 0,
+        "cases": [
+          {
+            "name": "test_prepend_scheme_preserves_url_components[example.org/a-https-https://example.org/a]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_prepend_scheme_preserves_url_components[example.org-http-http://example.org]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_prepend_scheme_preserves_url_components[//example.org/a-https-https://example.org/a]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_prepend_scheme_preserves_url_components[example.org:8443/a/b?next=%2Fhome&x=1#section-https-https://example.org:8443/a/b?next=%2Fhome&x=1#section]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_prepend_scheme_preserves_url_components[//user:password@example.org:8080/path?x=1&y=2#part-https-https://user:password@example.org:8080/path?x=1&y=2#part]",
+            "classname": "tests.test_generated",
+            "status": "failed"
+          },
+          {
+            "name": "test_prepend_scheme_preserves_url_components[//u%40name:p%3Ass@example.org/path-http-http://u%40name:p%3Ass@example.org/path]",
+            "classname": "tests.test_generated",
+            "status": "failed"
+          },
+          {
+            "name": "test_prepend_scheme_preserves_url_components[http://example.org/a-https-http://example.org/a]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_prepend_scheme_preserves_url_components[https://example.org/a-http-https://example.org/a]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_prepend_scheme_preserves_url_components[http://user:password@example.org:8080/a;b?x=1&y=2#part-https-http://user:password@example.org:8080/a;b?x=1&y=2#part]",
+            "classname": "tests.test_generated",
+            "status": "failed"
+          },
+          {
+            "name": "test_prepend_scheme_preserves_url_components[https://u%40name:p%3Ass@example.org:443/?q=a%20b#frag-http-https://u%40name:p%3Ass@example.org:443/?q=a%20b#frag]",
+            "classname": "tests.test_generated",
+            "status": "failed"
+          },
+          {
+            "name": "test_prepend_scheme_preserves_url_components[ftp://example.org/pub/file-https-ftp://example.org/pub/file]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://user:password@example.org/path-expected0]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[http://alice:s3cret@example.org:8080/a?x=1#part-expected1]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://first%20last:p%40ss%3Aword%2F%3F%23%20x@example.org/-expected2]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://u%40%3A%2F%3F%23:p%20word@example.org/-expected3]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://a+b:c+d@example.org/-expected4]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://u%2520:p%2540@example.org/-expected5]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://example.org/-expected6]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://example.org/a?user=name&password=secret#user:pass-expected7]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://username@example.org/-expected8]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://username:@example.org/-expected9]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://first%20last:@example.org/-expected10]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://:@example.org/-expected11]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[//user:password@example.org/path-expected12]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[https://user:password@example.org:8443/a/b;v=1?x=2&y=3#section-https://example.org:8443/a/b;v=1?x=2&y=3]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[http://user:password@example.org/path-http://example.org/path]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[https://username@example.org/a-https://example.org/a]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[https://username:@example.org/a#f-https://example.org/a]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[https://user:p@ss@word@example.org:9443/a;p?q=1#frag-https://example.org:9443/a;p?q=1]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[http://u%40name:p%3Ass@example.org:80/a%23b;p?q=%40%23#frag-http://example.org:80/a%23b;p?q=%40%23]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[https://example.org:443/a;b?x=1&y=2#fragment-https://example.org:443/a;b?x=1&y=2]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[https://example.org:443/a;b?x=1&y=2-https://example.org:443/a;b?x=1&y=2]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[http://example.org-http://example.org]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[https://example.org/#-https://example.org/]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[https://example.org/a@b;p?q=user@host-https://example.org/a@b;p?q=user@host]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[https://u:p@example.org/a@b;p?q=user@host#other@host-https://example.org/a@b;p?q=user@host]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[//user:pass@example.org:8080/a;p?q=1#part-//example.org:8080/a;p?q=1]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[https://u:p@[2001:db8::1]:8443/a?x=1#part-https://[2001:db8::1]:8443/a?x=1]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          }
+        ]
+      },
+      "fault_fail_percent_decode_credentials": {
+        "total": 38,
+        "passed": 31,
+        "failed": 7,
+        "errors": 0,
+        "skipped": 0,
+        "cases": [
+          {
+            "name": "test_prepend_scheme_preserves_url_components[example.org/a-https-https://example.org/a]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_prepend_scheme_preserves_url_components[example.org-http-http://example.org]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_prepend_scheme_preserves_url_components[//example.org/a-https-https://example.org/a]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_prepend_scheme_preserves_url_components[example.org:8443/a/b?next=%2Fhome&x=1#section-https-https://example.org:8443/a/b?next=%2Fhome&x=1#section]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_prepend_scheme_preserves_url_components[//user:password@example.org:8080/path?x=1&y=2#part-https-https://user:password@example.org:8080/path?x=1&y=2#part]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_prepend_scheme_preserves_url_components[//u%40name:p%3Ass@example.org/path-http-http://u%40name:p%3Ass@example.org/path]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_prepend_scheme_preserves_url_components[http://example.org/a-https-http://example.org/a]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_prepend_scheme_preserves_url_components[https://example.org/a-http-https://example.org/a]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_prepend_scheme_preserves_url_components[http://user:password@example.org:8080/a;b?x=1&y=2#part-https-http://user:password@example.org:8080/a;b?x=1&y=2#part]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_prepend_scheme_preserves_url_components[https://u%40name:p%3Ass@example.org:443/?q=a%20b#frag-http-https://u%40name:p%3Ass@example.org:443/?q=a%20b#frag]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_prepend_scheme_preserves_url_components[ftp://example.org/pub/file-https-ftp://example.org/pub/file]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://user:password@example.org/path-expected0]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[http://alice:s3cret@example.org:8080/a?x=1#part-expected1]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://first%20last:p%40ss%3Aword%2F%3F%23%20x@example.org/-expected2]",
+            "classname": "tests.test_generated",
+            "status": "failed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://u%40%3A%2F%3F%23:p%20word@example.org/-expected3]",
+            "classname": "tests.test_generated",
+            "status": "failed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://a+b:c+d@example.org/-expected4]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://u%2520:p%2540@example.org/-expected5]",
+            "classname": "tests.test_generated",
+            "status": "failed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://example.org/-expected6]",
+            "classname": "tests.test_generated",
+            "status": "failed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://example.org/a?user=name&password=secret#user:pass-expected7]",
+            "classname": "tests.test_generated",
+            "status": "failed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://username@example.org/-expected8]",
+            "classname": "tests.test_generated",
+            "status": "failed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://username:@example.org/-expected9]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://first%20last:@example.org/-expected10]",
+            "classname": "tests.test_generated",
+            "status": "failed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://:@example.org/-expected11]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[//user:password@example.org/path-expected12]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[https://user:password@example.org:8443/a/b;v=1?x=2&y=3#section-https://example.org:8443/a/b;v=1?x=2&y=3]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[http://user:password@example.org/path-http://example.org/path]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[https://username@example.org/a-https://example.org/a]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[https://username:@example.org/a#f-https://example.org/a]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[https://user:p@ss@word@example.org:9443/a;p?q=1#frag-https://example.org:9443/a;p?q=1]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[http://u%40name:p%3Ass@example.org:80/a%23b;p?q=%40%23#frag-http://example.org:80/a%23b;p?q=%40%23]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[https://example.org:443/a;b?x=1&y=2#fragment-https://example.org:443/a;b?x=1&y=2]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[https://example.org:443/a;b?x=1&y=2-https://example.org:443/a;b?x=1&y=2]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[http://example.org-http://example.org]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[https://example.org/#-https://example.org/]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[https://example.org/a@b;p?q=user@host-https://example.org/a@b;p?q=user@host]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[https://u:p@example.org/a@b;p?q=user@host#other@host-https://example.org/a@b;p?q=user@host]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[//user:pass@example.org:8080/a;p?q=1#part-//example.org:8080/a;p?q=1]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[https://u:p@[2001:db8::1]:8443/a?x=1#part-https://[2001:db8::1]:8443/a?x=1]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          }
+        ]
+      },
+      "fault_wrong_missing_credential_value": {
+        "total": 38,
+        "passed": 35,
+        "failed": 3,
+        "errors": 0,
+        "skipped": 0,
+        "cases": [
+          {
+            "name": "test_prepend_scheme_preserves_url_components[example.org/a-https-https://example.org/a]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_prepend_scheme_preserves_url_components[example.org-http-http://example.org]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_prepend_scheme_preserves_url_components[//example.org/a-https-https://example.org/a]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_prepend_scheme_preserves_url_components[example.org:8443/a/b?next=%2Fhome&x=1#section-https-https://example.org:8443/a/b?next=%2Fhome&x=1#section]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_prepend_scheme_preserves_url_components[//user:password@example.org:8080/path?x=1&y=2#part-https-https://user:password@example.org:8080/path?x=1&y=2#part]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_prepend_scheme_preserves_url_components[//u%40name:p%3Ass@example.org/path-http-http://u%40name:p%3Ass@example.org/path]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_prepend_scheme_preserves_url_components[http://example.org/a-https-http://example.org/a]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_prepend_scheme_preserves_url_components[https://example.org/a-http-https://example.org/a]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_prepend_scheme_preserves_url_components[http://user:password@example.org:8080/a;b?x=1&y=2#part-https-http://user:password@example.org:8080/a;b?x=1&y=2#part]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_prepend_scheme_preserves_url_components[https://u%40name:p%3Ass@example.org:443/?q=a%20b#frag-http-https://u%40name:p%3Ass@example.org:443/?q=a%20b#frag]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_prepend_scheme_preserves_url_components[ftp://example.org/pub/file-https-ftp://example.org/pub/file]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://user:password@example.org/path-expected0]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[http://alice:s3cret@example.org:8080/a?x=1#part-expected1]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://first%20last:p%40ss%3Aword%2F%3F%23%20x@example.org/-expected2]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://u%40%3A%2F%3F%23:p%20word@example.org/-expected3]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://a+b:c+d@example.org/-expected4]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://u%2520:p%2540@example.org/-expected5]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://example.org/-expected6]",
+            "classname": "tests.test_generated",
+            "status": "failed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://example.org/a?user=name&password=secret#user:pass-expected7]",
+            "classname": "tests.test_generated",
+            "status": "failed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://username@example.org/-expected8]",
+            "classname": "tests.test_generated",
+            "status": "failed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://username:@example.org/-expected9]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://first%20last:@example.org/-expected10]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://:@example.org/-expected11]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[//user:password@example.org/path-expected12]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[https://user:password@example.org:8443/a/b;v=1?x=2&y=3#section-https://example.org:8443/a/b;v=1?x=2&y=3]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[http://user:password@example.org/path-http://example.org/path]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[https://username@example.org/a-https://example.org/a]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[https://username:@example.org/a#f-https://example.org/a]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[https://user:p@ss@word@example.org:9443/a;p?q=1#frag-https://example.org:9443/a;p?q=1]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[http://u%40name:p%3Ass@example.org:80/a%23b;p?q=%40%23#frag-http://example.org:80/a%23b;p?q=%40%23]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[https://example.org:443/a;b?x=1&y=2#fragment-https://example.org:443/a;b?x=1&y=2]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[https://example.org:443/a;b?x=1&y=2-https://example.org:443/a;b?x=1&y=2]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[http://example.org-http://example.org]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[https://example.org/#-https://example.org/]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[https://example.org/a@b;p?q=user@host-https://example.org/a@b;p?q=user@host]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[https://u:p@example.org/a@b;p?q=user@host#other@host-https://example.org/a@b;p?q=user@host]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[//user:pass@example.org:8080/a;p?q=1#part-//example.org:8080/a;p?q=1]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[https://u:p@[2001:db8::1]:8443/a?x=1#part-https://[2001:db8::1]:8443/a?x=1]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          }
+        ]
+      },
+      "fault_retain_fragment": {
+        "total": 38,
+        "passed": 30,
+        "failed": 8,
+        "errors": 0,
+        "skipped": 0,
+        "cases": [
+          {
+            "name": "test_prepend_scheme_preserves_url_components[example.org/a-https-https://example.org/a]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_prepend_scheme_preserves_url_components[example.org-http-http://example.org]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_prepend_scheme_preserves_url_components[//example.org/a-https-https://example.org/a]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_prepend_scheme_preserves_url_components[example.org:8443/a/b?next=%2Fhome&x=1#section-https-https://example.org:8443/a/b?next=%2Fhome&x=1#section]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_prepend_scheme_preserves_url_components[//user:password@example.org:8080/path?x=1&y=2#part-https-https://user:password@example.org:8080/path?x=1&y=2#part]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_prepend_scheme_preserves_url_components[//u%40name:p%3Ass@example.org/path-http-http://u%40name:p%3Ass@example.org/path]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_prepend_scheme_preserves_url_components[http://example.org/a-https-http://example.org/a]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_prepend_scheme_preserves_url_components[https://example.org/a-http-https://example.org/a]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_prepend_scheme_preserves_url_components[http://user:password@example.org:8080/a;b?x=1&y=2#part-https-http://user:password@example.org:8080/a;b?x=1&y=2#part]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_prepend_scheme_preserves_url_components[https://u%40name:p%3Ass@example.org:443/?q=a%20b#frag-http-https://u%40name:p%3Ass@example.org:443/?q=a%20b#frag]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_prepend_scheme_preserves_url_components[ftp://example.org/pub/file-https-ftp://example.org/pub/file]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://user:password@example.org/path-expected0]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[http://alice:s3cret@example.org:8080/a?x=1#part-expected1]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://first%20last:p%40ss%3Aword%2F%3F%23%20x@example.org/-expected2]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://u%40%3A%2F%3F%23:p%20word@example.org/-expected3]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://a+b:c+d@example.org/-expected4]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://u%2520:p%2540@example.org/-expected5]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://example.org/-expected6]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://example.org/a?user=name&password=secret#user:pass-expected7]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://username@example.org/-expected8]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://username:@example.org/-expected9]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://first%20last:@example.org/-expected10]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://:@example.org/-expected11]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[//user:password@example.org/path-expected12]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[https://user:password@example.org:8443/a/b;v=1?x=2&y=3#section-https://example.org:8443/a/b;v=1?x=2&y=3]",
+            "classname": "tests.test_generated",
+            "status": "failed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[http://user:password@example.org/path-http://example.org/path]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[https://username@example.org/a-https://example.org/a]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[https://username:@example.org/a#f-https://example.org/a]",
+            "classname": "tests.test_generated",
+            "status": "failed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[https://user:p@ss@word@example.org:9443/a;p?q=1#frag-https://example.org:9443/a;p?q=1]",
+            "classname": "tests.test_generated",
+            "status": "failed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[http://u%40name:p%3Ass@example.org:80/a%23b;p?q=%40%23#frag-http://example.org:80/a%23b;p?q=%40%23]",
+            "classname": "tests.test_generated",
+            "status": "failed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[https://example.org:443/a;b?x=1&y=2#fragment-https://example.org:443/a;b?x=1&y=2]",
+            "classname": "tests.test_generated",
+            "status": "failed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[https://example.org:443/a;b?x=1&y=2-https://example.org:443/a;b?x=1&y=2]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[http://example.org-http://example.org]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[https://example.org/#-https://example.org/]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[https://example.org/a@b;p?q=user@host-https://example.org/a@b;p?q=user@host]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[https://u:p@example.org/a@b;p?q=user@host#other@host-https://example.org/a@b;p?q=user@host]",
+            "classname": "tests.test_generated",
+            "status": "failed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[//user:pass@example.org:8080/a;p?q=1#part-//example.org:8080/a;p?q=1]",
+            "classname": "tests.test_generated",
+            "status": "failed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[https://u:p@[2001:db8::1]:8443/a?x=1#part-https://[2001:db8::1]:8443/a?x=1]",
+            "classname": "tests.test_generated",
+            "status": "failed"
+          }
+        ]
+      },
+      "fault_retain_auth_cleanup": {
+        "total": 38,
+        "passed": 29,
+        "failed": 9,
+        "errors": 0,
+        "skipped": 0,
+        "cases": [
+          {
+            "name": "test_prepend_scheme_preserves_url_components[example.org/a-https-https://example.org/a]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_prepend_scheme_preserves_url_components[example.org-http-http://example.org]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_prepend_scheme_preserves_url_components[//example.org/a-https-https://example.org/a]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_prepend_scheme_preserves_url_components[example.org:8443/a/b?next=%2Fhome&x=1#section-https-https://example.org:8443/a/b?next=%2Fhome&x=1#section]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_prepend_scheme_preserves_url_components[//user:password@example.org:8080/path?x=1&y=2#part-https-https://user:password@example.org:8080/path?x=1&y=2#part]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_prepend_scheme_preserves_url_components[//u%40name:p%3Ass@example.org/path-http-http://u%40name:p%3Ass@example.org/path]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_prepend_scheme_preserves_url_components[http://example.org/a-https-http://example.org/a]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_prepend_scheme_preserves_url_components[https://example.org/a-http-https://example.org/a]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_prepend_scheme_preserves_url_components[http://user:password@example.org:8080/a;b?x=1&y=2#part-https-http://user:password@example.org:8080/a;b?x=1&y=2#part]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_prepend_scheme_preserves_url_components[https://u%40name:p%3Ass@example.org:443/?q=a%20b#frag-http-https://u%40name:p%3Ass@example.org:443/?q=a%20b#frag]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_prepend_scheme_preserves_url_components[ftp://example.org/pub/file-https-ftp://example.org/pub/file]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://user:password@example.org/path-expected0]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[http://alice:s3cret@example.org:8080/a?x=1#part-expected1]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://first%20last:p%40ss%3Aword%2F%3F%23%20x@example.org/-expected2]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://u%40%3A%2F%3F%23:p%20word@example.org/-expected3]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://a+b:c+d@example.org/-expected4]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://u%2520:p%2540@example.org/-expected5]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://example.org/-expected6]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://example.org/a?user=name&password=secret#user:pass-expected7]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://username@example.org/-expected8]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://username:@example.org/-expected9]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://first%20last:@example.org/-expected10]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[https://:@example.org/-expected11]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_auth_tuple_decoding_and_missing_credentials[//user:password@example.org/path-expected12]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[https://user:password@example.org:8443/a/b;v=1?x=2&y=3#section-https://example.org:8443/a/b;v=1?x=2&y=3]",
+            "classname": "tests.test_generated",
+            "status": "failed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[http://user:password@example.org/path-http://example.org/path]",
+            "classname": "tests.test_generated",
+            "status": "failed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[https://username@example.org/a-https://example.org/a]",
+            "classname": "tests.test_generated",
+            "status": "failed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[https://username:@example.org/a#f-https://example.org/a]",
+            "classname": "tests.test_generated",
+            "status": "failed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[https://user:p@ss@word@example.org:9443/a;p?q=1#frag-https://example.org:9443/a;p?q=1]",
+            "classname": "tests.test_generated",
+            "status": "failed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[http://u%40name:p%3Ass@example.org:80/a%23b;p?q=%40%23#frag-http://example.org:80/a%23b;p?q=%40%23]",
+            "classname": "tests.test_generated",
+            "status": "failed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[https://example.org:443/a;b?x=1&y=2#fragment-https://example.org:443/a;b?x=1&y=2]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[https://example.org:443/a;b?x=1&y=2-https://example.org:443/a;b?x=1&y=2]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[http://example.org-http://example.org]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[https://example.org/#-https://example.org/]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[https://example.org/a@b;p?q=user@host-https://example.org/a@b;p?q=user@host]",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[https://u:p@example.org/a@b;p?q=user@host#other@host-https://example.org/a@b;p?q=user@host]",
+            "classname": "tests.test_generated",
+            "status": "failed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[//user:pass@example.org:8080/a;p?q=1#part-//example.org:8080/a;p?q=1]",
+            "classname": "tests.test_generated",
+            "status": "failed"
+          },
+          {
+            "name": "test_defrag_removes_only_userinfo_and_fragment[https://u:p@[2001:db8::1]:8443/a?x=1#part-https://[2001:db8::1]:8443/a?x=1]",
+            "classname": "tests.test_generated",
+            "status": "failed"
+          }
+        ]
+      }
+    },
+    "phase_errors": {},
+    "regression_issue": null,
+    "failed_tests": [],
+    "cleanup_errors": []
+  },
+  "cleanup_error": null,
+  "volume_cleanup_error": null,
+  "native_usage_totals": {
+    "input_tokens": 7855,
+    "input_tokens_details.cache_write_tokens": 3038,
+    "input_tokens_details.cached_tokens": 3997,
+    "output_tokens": 3376,
+    "output_tokens_details.reasoning_tokens": 494,
+    "total_tokens": 11231
+  },
+  "usage_complete": true,
+  "completed_model_calls": 4,
+  "completed_request_output_tokens_per_second": 57.639484817243414,
+  "normalized_action_response_count": 1,
+  "discarded_action_block_count": 4,
+  "model_calls": 4,
+  "request_seconds": 58.57095890000346,
+  "tool_seconds": 0.9363208999857306,
+  "incomplete_request_count": 0,
+  "request_fraction": 0.9821119100092077,
+  "tool_calls": 4,
+  "failed_tool_calls": 0,
+  "accepted_within_budget": true,
+  "completion_seconds": 74.58965919999173,
+  "through_cleanup_seconds": 74.76728000000003
+}

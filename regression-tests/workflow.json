@@ -6,7 +6,7 @@
   "contract_tests": ["test_witnesses.py"],
   "generated_test_path": "tests/test_generated.py",
   "pydantic_warnings_as_errors": false,
-  "default_freeze": "freeze-720s-requests-v2.json",
+  "default_freeze": "freeze-720s-requests-v3.json",
   "default_image": "requests-regression:0.1",
   "fault_variants": [
     {
@@ -37,7 +37,7 @@
       "name": "fail_percent_decode_credentials",
       "path": "requests/utils.py",
       "before": "        auth = (unquote(parsed.username), unquote(parsed.password))",
-      "after": "        auth = (str(parsed.username), str(parsed.password))"
+      "after": "        auth = (parsed.username, unquote(parsed.password))"
     },
     {
       "name": "wrong_missing_credential_value",

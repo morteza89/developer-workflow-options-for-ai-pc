@@ -1,0 +1,436 @@
+{
+  "attempt_id": "attempt-56d81f6fdfbc48e8a9098df0da6f5d19",
+  "created_at": "2026-10-26T20:09:49.893348+00:00",
+  "label": "offline-harness-smoke",
+  "scored": false,
+  "mock": true,
+  "image": "sha256:74283564a52c5969dec0355e2d0fa1f297110fd8be55f0b6d497650a627315a5",
+  "runner": {
+    "python": "3.11.15 (main, Jun 11 2026, 04:59:07) [MSC v.1944 64 bit (AMD64)]",
+    "packages": {
+      "aiohappyeyeballs": "2.7.1",
+      "aiohttp": "3.14.3",
+      "aiosignal": "1.4.0",
+      "annotated-doc": "0.0.5",
+      "annotated-types": "0.8.0",
+      "anthropic": "0.72.0",
+      "anyio": "4.15.1",
+      "attrs": "26.1.0",
+      "boto3": "1.43.108",
+      "botocore": "1.43.108",
+      "certifi": "2026.7.22",
+      "charset-normalizer": "3.5.2",
+      "click": "8.5.0",
+      "colorama": "0.4.6",
+      "datasets": "5.1.0",
+      "dill": "0.4.1",
+      "distro": "1.9.0",
+      "docstring-parser": "0.18.0",
+      "fastuuid": "0.14.0",
+      "filelock": "3.32.7",
+      "frozenlist": "1.8.0",
+      "fsspec": "2026.7.0",
+      "h11": "0.16.0",
+      "h2": "4.4.1",
+      "hf-xet": "1.6.0",
+      "hpack": "4.2.0",
+      "httpcore": "1.0.9",
+      "httpx": "0.28.1",
+      "huggingface-hub": "1.33.0",
+      "hyperframe": "6.1.0",
+      "idna": "3.20",
+      "importlib-metadata": "8.9.0",
+      "iniconfig": "2.3.0",
+      "jinja2": "3.1.6",
+      "jiter": "0.17.0",
+      "jmespath": "1.1.0",
+      "jsonschema": "4.26.0",
+      "jsonschema-specifications": "2025.9.1",
+      "linkify-it-py": "2.2.0",
+      "litellm": "1.104.0",
+      "markdown-it-py": "4.2.0",
+      "markupsafe": "3.0.4",
+      "mdit-py-plugins": "0.6.1",
+      "mdurl": "0.1.2",
+      "mini-swe-agent": "2.4.6",
+      "multidict": "6.9.1",
+      "multiprocess": "0.70.19",
+      "numpy": "2.4.6",
+      "openai": "2.54.0",
+      "packaging": "26.3",
+      "pandas": "3.0.6",
+      "platformdirs": "4.12.3",
+      "pluggy": "1.6.0",
+      "prompt-toolkit": "3.0.53",
+      "propcache": "0.5.4",
+      "pyarrow": "25.0.1",
+      "pydantic": "2.13.5",
+      "pydantic-core": "2.46.5",
+      "pydantic-settings": "2.15.0",
+      "pygments": "2.21.0",
+      "pytest": "8.4.2",
+      "python-dateutil": "2.9.0.post0",
+      "python-dotenv": "1.2.4",
+      "pyyaml": "6.0.3",
+      "referencing": "0.37.0",
+      "regex": "2026.9.29",
+      "requests": "2.34.2",
+      "rich": "15.0.0",
+      "rpds-py": "2026.9.1",
+      "s3transfer": "0.19.2",
+      "shellingham": "1.5.4",
+      "six": "1.17.0",
+      "sniffio": "1.3.1",
+      "tenacity": "9.1.4",
+      "textual": "8.2.8",
+      "tiktoken": "0.14.0",
+      "tokenizers": "0.23.2",
+      "tqdm": "4.70.1",
+      "typer": "0.27.2",
+      "typing-extensions": "4.16.0",
+      "typing-inspection": "0.4.4",
+      "tzdata": "2026.5",
+      "urllib3": "2.8.0",
+      "wcwidth": "0.9.2",
+      "xxhash": "4.0.1",
+      "yarl": "1.25.1",
+      "zipp": "4.1.1"
+    }
+  },
+  "task_hash": "54fc9347031fe83dbd73532e5e81dcd352a373f8cd0e8e5c5ded49d4b8d816a0",
+  "profile_hash": "7987cd98e029cd7af939f4a2c579792111c630290dd3c2845df179518aa767f5",
+  "accepted": true,
+  "category": "accepted",
+  "agent_seconds": 1.3041006000712514,
+  "verifier_seconds": 3.193546500056982,
+  "api_fee_usd": 0.0,
+  "provider": "mock",
+  "model": "offline-mock",
+  "request_settings": {
+    "provider": "mock",
+    "model": "offline-mock",
+    "max_output_tokens": 2048,
+    "temperature": 0,
+    "sampling": "greedy",
+    "reasoning": "model_default",
+    "output_cap_includes_reasoning_tokens": false,
+    "retries": 0,
+    "api": null
+  },
+  "submission_checks": 0,
+  "rejected_submissions": 0,
+  "submission_check_seconds": 0.0,
+  "execution_mode": "deadline",
+  "deadline_seconds": 600,
+  "submission_seconds": 1.237267200020142,
+  "worker_outcome": {
+    "kind": "finished",
+    "at": 574116.0960581,
+    "result": {
+      "exit_status": "Submitted",
+      "submission": "smoke\n"
+    }
+  },
+  "cutoff_overrun_seconds": 0,
+  "exit_status": "Submitted",
+  "submission_violations": [],
+  "through_verification_seconds": 4.611263700062409,
+  "verification": {
+    "accepted": true,
+    "category": "accepted",
+    "checks": {
+      "contract": true,
+      "generated": true
+    },
+    "faults_detected": 0,
+    "faults_total": 0,
+    "test_results": {
+      "contract": {
+        "total": 47,
+        "passed": 47,
+        "failed": 0,
+        "errors": 0,
+        "skipped": 0,
+        "cases": [
+          {
+            "name": "test_startup_settings",
+            "classname": "test_contract",
+            "status": "passed"
+          },
+          {
+            "name": "test_alias_json_values[None]",
+            "classname": "test_contract",
+            "status": "passed"
+          },
+          {
+            "name": "test_alias_json_values[reviewed]",
+            "classname": "test_contract",
+            "status": "passed"
+          },
+          {
+            "name": "test_alias_json_values[]",
+            "classname": "test_contract",
+            "status": "passed"
+          },
+          {
+            "name": "test_field_names_and_omitted_notes",
+            "classname": "test_contract",
+            "status": "passed"
+          },
+          {
+            "name": "test_invalid_inputs[changes0]",
+            "classname": "test_contract",
+            "status": "passed"
+          },
+          {
+            "name": "test_invalid_inputs[changes1]",
+            "classname": "test_contract",
+            "status": "passed"
+          },
+          {
+            "name": "test_invalid_inputs[changes2]",
+            "classname": "test_contract",
+            "status": "passed"
+          },
+          {
+            "name": "test_invalid_inputs[changes3]",
+            "classname": "test_contract",
+            "status": "passed"
+          },
+          {
+            "name": "test_invalid_inputs[changes4]",
+            "classname": "test_contract",
+            "status": "passed"
+          },
+          {
+            "name": "test_invalid_inputs[changes5]",
+            "classname": "test_contract",
+            "status": "passed"
+          },
+          {
+            "name": "test_invalid_inputs[changes6]",
+            "classname": "test_contract",
+            "status": "passed"
+          },
+          {
+            "name": "test_invalid_inputs[changes7]",
+            "classname": "test_contract",
+            "status": "passed"
+          },
+          {
+            "name": "test_invalid_inputs[changes8]",
+            "classname": "test_contract",
+            "status": "passed"
+          },
+          {
+            "name": "test_invalid_inputs[changes9]",
+            "classname": "test_contract",
+            "status": "passed"
+          },
+          {
+            "name": "test_invalid_inputs[changes10]",
+            "classname": "test_contract",
+            "status": "passed"
+          },
+          {
+            "name": "test_invalid_inputs[changes11]",
+            "classname": "test_contract",
+            "status": "passed"
+          },
+          {
+            "name": "test_category_normalization[ PERSONAL -personal]",
+            "classname": "test_contract",
+            "status": "passed"
+          },
+          {
+            "name": "test_category_normalization[Personal-personal]",
+            "classname": "test_contract",
+            "status": "passed"
+          },
+          {
+            "name": "test_category_normalization[\\tpersonal\\n-personal]",
+            "classname": "test_contract",
+            "status": "passed"
+          },
+          {
+            "name": "test_category_normalization[Work-work]",
+            "classname": "test_contract",
+            "status": "passed"
+          },
+          {
+            "name": "test_category_normalization[work -work]",
+            "classname": "test_contract",
+            "status": "passed"
+          },
+          {
+            "name": "test_category_normalization[ WORK-work]",
+            "classname": "test_contract",
+            "status": "passed"
+          },
+          {
+            "name": "test_required_fields[externalId]",
+            "classname": "test_contract",
+            "status": "passed"
+          },
+          {
+            "name": "test_required_fields[merchantCode]",
+            "classname": "test_contract",
+            "status": "passed"
+          },
+          {
+            "name": "test_required_fields[amountCents]",
+            "classname": "test_contract",
+            "status": "passed"
+          },
+          {
+            "name": "test_required_fields[category]",
+            "classname": "test_contract",
+            "status": "passed"
+          },
+          {
+            "name": "test_receipt_semantics[work-10000-None-201]",
+            "classname": "test_contract",
+            "status": "passed"
+          },
+          {
+            "name": "test_receipt_semantics[work-10001-None-422]",
+            "classname": "test_contract",
+            "status": "passed"
+          },
+          {
+            "name": "test_receipt_semantics[ WORK -10001--422]",
+            "classname": "test_contract",
+            "status": "passed"
+          },
+          {
+            "name": "test_receipt_semantics[work-10001-R1-201]",
+            "classname": "test_contract",
+            "status": "passed"
+          },
+          {
+            "name": "test_receipt_semantics[work-10001- -201]",
+            "classname": "test_contract",
+            "status": "passed"
+          },
+          {
+            "name": "test_receipt_semantics[personal-10001-None-201]",
+            "classname": "test_contract",
+            "status": "passed"
+          },
+          {
+            "name": "test_receipt_semantics[personal-10000000-None-201]",
+            "classname": "test_contract",
+            "status": "passed"
+          },
+          {
+            "name": "test_integer_merchant_codes[0]",
+            "classname": "test_contract",
+            "status": "passed"
+          },
+          {
+            "name": "test_integer_merchant_codes[-1]",
+            "classname": "test_contract",
+            "status": "passed"
+          },
+          {
+            "name": "test_integer_merchant_codes[123456]",
+            "classname": "test_contract",
+            "status": "passed"
+          },
+          {
+            "name": "test_patch_presence[body0]",
+            "classname": "test_contract",
+            "status": "passed"
+          },
+          {
+            "name": "test_patch_presence[body1]",
+            "classname": "test_contract",
+            "status": "passed"
+          },
+          {
+            "name": "test_patch_presence[body2]",
+            "classname": "test_contract",
+            "status": "passed"
+          },
+          {
+            "name": "test_patch_presence[body3]",
+            "classname": "test_contract",
+            "status": "passed"
+          },
+          {
+            "name": "test_patch_unknown_field",
+            "classname": "test_contract",
+            "status": "passed"
+          },
+          {
+            "name": "test_object_serialization",
+            "classname": "test_contract",
+            "status": "passed"
+          },
+          {
+            "name": "test_native_models_and_attribute_loading",
+            "classname": "test_native",
+            "status": "passed"
+          },
+          {
+            "name": "test_positive_settings_limit",
+            "classname": "test_native",
+            "status": "passed"
+          },
+          {
+            "name": "test_routes_keep_model_boundaries_and_load_runtime_attributes",
+            "classname": "test_native",
+            "status": "passed"
+          },
+          {
+            "name": "test_no_legacy_api",
+            "classname": "test_native",
+            "status": "passed"
+          }
+        ]
+      },
+      "generated": {
+        "total": 2,
+        "passed": 2,
+        "failed": 0,
+        "errors": 0,
+        "skipped": 0,
+        "cases": [
+          {
+            "name": "test_migration_preserves_patch_presence",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          },
+          {
+            "name": "test_migration_preserves_merchant_coercion",
+            "classname": "tests.test_generated",
+            "status": "passed"
+          }
+        ]
+      }
+    },
+    "phase_errors": {},
+    "regression_issue": null,
+    "failed_tests": [],
+    "cleanup_errors": []
+  },
+  "cleanup_error": null,
+  "volume_cleanup_error": null,
+  "native_usage_totals": {},
+  "usage_complete": true,
+  "completed_model_calls": 0,
+  "completed_request_output_tokens_per_second": null,
+  "normalized_action_response_count": 0,
+  "discarded_action_block_count": 0,
+  "model_calls": 0,
+  "request_seconds": 0.0,
+  "tool_seconds": 1.2216911998111755,
+  "incomplete_request_count": 0,
+  "request_fraction": 0.0,
+  "tool_calls": 3,
+  "failed_tool_calls": 0,
+  "api_fee_incomplete": false,
+  "accepted_within_budget": true,
+  "completion_seconds": 4.611263700062409,
+  "through_cleanup_seconds": 4.787726200069301
+}

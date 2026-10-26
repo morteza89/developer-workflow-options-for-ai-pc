@@ -40,9 +40,16 @@ def test_field_names_and_omitted_notes(client):
     assert response.json() == payload(externalId="internal", merchantCode="m", amountCents=1, notes=None, receipt=None)
 
 
-@pytest.mark.parametrize("changes", [{"amountCents": 0}, {"amountCents": -1}, {"amountCents": 10000001}, {"amountCents": "500"}, {"amountCents": 5.2}, {"amountCents": True}, {"category": "travel"}, {"externalId": ""}, {"notes": []}, {"unexpected": 1}])
+@pytest.mark.parametrize("changes", [{"amountCents": 0}, {"amountCents": -1}, {"amountCents": 10000001}, {"amountCents": "500"}, {"amountCents": 5.2}, {"amountCents": 5.0}, {"amountCents": 500.0}, {"amountCents": True}, {"category": "travel"}, {"externalId": ""}, {"notes": []}, {"unexpected": 1}])
 def test_invalid_inputs(client, changes):
     assert client.post("/expenses", json=payload(**changes)).status_code == 422
+
+
+@pytest.mark.parametrize("category,normalized", [(" PERSONAL ", "personal"), ("Personal", "personal"), ("\tpersonal\n", "personal"), ("Work", "work"), ("work ", "work"), (" WORK", "work")])
+def test_category_normalization(client, category, normalized):
+    response = client.post("/expenses", json=payload(category=category))
+    assert response.status_code == 201
+    assert response.json() == payload(category=normalized, receipt=None, notes=None)
 
 
 @pytest.mark.parametrize("field", ["externalId", "merchantCode", "amountCents", "category"])
@@ -81,5 +88,9 @@ def test_patch_unknown_field(client):
 def test_object_serialization(client):
     response = client.get("/expenses/7")
     assert response.status_code == 200
-    assert response.json() == {"expenseId": 7, "externalId": "seed-7", "merchantCode": "42", "amountCents": 12500, "category": "work", "receipt": "R-7", "notes": None}
+    body = response.json()
+    assert body == {"expenseId": 7, "externalId": "seed-7", "merchantCode": "42", "amountCents": 12500, "category": "work", "receipt": "R-7", "notes": None}
+    assert type(body["expenseId"]) is int
+    assert type(body["amountCents"]) is int
+    assert type(body["merchantCode"]) is str
     assert client.get("/expenses/8").status_code == 404

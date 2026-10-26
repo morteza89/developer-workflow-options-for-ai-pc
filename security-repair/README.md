@@ -6,7 +6,7 @@ The verifier rejects PEM and OpenSSH asymmetric key material used as an HMAC sec
 
 ## Status
 
-Offline qualification passed on Docker image `pyjwt-security:0.1`: the vulnerable source failed the injected regression tests; the upstream reference passed the contract, generated tests, and baseline-negative control; four deliberately defective repairs were rejected. Under v5 at 240 seconds, 27B timed out after 7/8 protected checks with no generated assertions; 8B submitted after 52 seconds with 4/8 checks and no generated assertions. OpenAI passed 8/8 protected and 31/31 generated tests in 119 seconds. Under v7 at 600 seconds, 27B used 579 seconds, passed 6/8 protected checks and 7/7 generated tests, but missed RSA PEM/certificate and legacy PKCS#1 checks. The visible test now exercises those formats; v8 is the new 600-second comparison freeze. Results are unscored pilots, not qualification or acceptance claims.
+Offline qualification passed on Docker image `pyjwt-security:0.1`: the vulnerable source failed the injected regression tests; the upstream reference passed the contract, generated tests, and baseline-negative control; nine deliberately defective repairs were rejected (restored vulnerable source, OpenSSH accepted as HMAC, every HMAC key rejected, EdDSA `TypeError` contract, disabled signature verification, prefix-only key detection, visible-formats-only key detection, dropped ECDSA OpenSSH loading, and EdDSA accepting RSA key material). Under v5 at 240 seconds, 27B timed out after 7/8 protected checks with no generated assertions; 8B submitted after 52 seconds with 4/8 checks and no generated assertions. OpenAI passed 8/8 protected and 31/31 generated tests in 119 seconds. Under v7 at 600 seconds, 27B used 579 seconds, passed 6/8 protected checks and 7/7 generated tests, but missed RSA PEM/certificate and legacy PKCS#1 checks. The visible test now exercises those formats; v8 is the new 600-second comparison freeze. Results are unscored pilots, not qualification or acceptance claims.
 
 ## Setup and Checks
 
@@ -40,8 +40,27 @@ Before a scored model run, qualify a model/profile, retain the profile outside s
 - `starter/` contains the sanitized vulnerable snapshot, visible test, reproducer, task, and maintainer migration notes.
 - `reference/` contains the pinned source repair and regression tests.
 - `grader/` contains protected security and compatibility tests, mounted read-only during verification.
-- `qualify.py` checks baseline/reference behavior and rejects four wrong-repair controls.
+- `qualify.py` checks baseline/reference behavior and rejects nine wrong-repair controls, including repairs that disable signature verification, detect key material by prefix only, cover only the visible formats, break ECDSA OpenSSH verification, or let EdDSA accept RSA keys.
 - `demo_server.py` serves a generated-key, loopback-only JSON comparison.
 - `workflow.json`, `policy.json`, and `requirements-task.lock` pin task scope, timing, and image dependencies.
 
 Source provenance and licensing are recorded in [SOURCE_NOTICES.md](SOURCE_NOTICES.md).
+
+## Re-verification Under the v10 Grader (26 October 2026)
+
+Historically accepted model submissions (freeze v9) were re-run, read-only, against the strengthened protected tests in the pinned image. `result.json` files were not changed.
+
+| Attempt | Model | v10 grader | First failing protected tests |
+| --- | --- | --- | --- |
+| `24523a2fed95` | qwen3.8-27b-ov | REJECTED | test_pem_material_embedded_after_a_prefix_is_not_an_hmac_secret, test_openssh_public_key_with_leading_whitespace_or_options_is_not_an_hmac_secret |
+| `619b463c6913` | qwen3.8-27b-ov | REJECTED | test_pem_material_embedded_after_a_prefix_is_not_an_hmac_secret, test_openssh_public_key_with_leading_whitespace_or_options_is_not_an_hmac_secret |
+| `6a672aa78e4b` | qwen3.8-27b-ov | REJECTED | test_pem_material_embedded_after_a_prefix_is_not_an_hmac_secret, test_openssh_public_key_with_leading_whitespace_or_options_is_not_an_hmac_secret |
+| `925c4a67a6ce` | gpt-6.1-sol | REJECTED | test_traditional_and_openssh_private_pem_formats_are_not_hmac_secrets |
+| `9c1d5902396a` | qwen3.8-27b-ov | REJECTED | test_pem_material_embedded_after_a_prefix_is_not_an_hmac_secret, test_openssh_public_key_with_leading_whitespace_or_options_is_not_an_hmac_secret |
+| `d20c984bbc4d` | gpt-6-astra | accepted | none |
+| `d629e6e5267e` | qwen3.8-27b-ov | REJECTED | test_pem_material_embedded_after_a_prefix_is_not_an_hmac_secret, test_openssh_public_key_with_leading_whitespace_or_options_is_not_an_hmac_secret |
+| `d76009ffd8f7` | qwen38-fable5-int4 | REJECTED | test_pem_material_embedded_after_a_prefix_is_not_an_hmac_secret, test_every_openssh_public_key_type_is_rejected_as_hmac_secret |
+| `f65c444763ea` | gpt-6.1-sol | accepted | none |
+| `fcd418ab07b1` | qwen3.8-27b-ov | REJECTED | test_pem_material_embedded_after_a_prefix_is_not_an_hmac_secret, test_openssh_public_key_with_leading_whitespace_or_options_is_not_an_hmac_secret |
+
+Every 27B/Fable submission recognised asymmetric keys only by prefix (`startswith(b"-----BEGIN")`, `startswith(b"ssh-")`), which accepts a PEM preceded by a newline or an OpenSSH key with an options prefix as an HMAC secret; these results are not secure repairs and must be rerun on v10 before comparison.

@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import re
 import shutil
 import sys
 import uuid
@@ -69,6 +70,48 @@ def check(image):
             "raise InvalidKeyError(\n                    \"Expecting a EllipticCurvePrivateKey/EllipticCurvePublicKey. Wrong key provided for EdDSA algorithms\"\n                )",
             "raise TypeError(\n                    \"Expecting a EllipticCurvePrivateKey/EllipticCurvePublicKey. Wrong key provided for EdDSA algorithms\"\n                )",
         ),
+        # Every Algorithm.verify returns True: key confusion is "fixed" but no signature is ever checked.
+        "disable-signature-verification": lambda path: mutate_every(
+            path / "jwt/algorithms.py",
+            r"(\n(\s+)def verify\(self, msg, key, sig\):\n)",
+            r"\1\2    return True\n",
+            minimum=6,
+        ),
+        # Prefix-only recognisers accept PEM after a newline/text prefix and OpenSSH lines with options.
+        "prefix-only-key-detection": lambda path: [
+            mutate_once(
+                path / "jwt/utils.py",
+                "def is_pem_format(key: bytes) -> bool:\n    return bool(_PEM_RE.search(key))",
+                "def is_pem_format(key: bytes) -> bool:\n    return key.startswith(b\"-----BEGIN\")",
+            ),
+            mutate_once(
+                path / "jwt/utils.py",
+                "def is_ssh_key(key: bytes) -> bool:\n",
+                "def is_ssh_key(key: bytes) -> bool:\n    return key.startswith(b\"ssh-\") or key.startswith(b\"ecdsa-sha2-\")\n",
+            ),
+        ],
+        # Starter-style substring list covering only the visible formats (no traditional/OpenSSH private PEM, ssh-dss, nistp384/521).
+        "narrowed-key-detection": lambda path: [
+            shutil.copyfile(ROOT / "starter/jwt/utils.py", path / "jwt/utils.py"),
+            mutate_once(path / "jwt/algorithms.py", "    is_pem_format,\n    is_ssh_key,\n", ""),
+            mutate_once(
+                path / "jwt/algorithms.py",
+                "        if is_pem_format(key) or is_ssh_key(key):",
+                "        invalid_strings = [b\"-----BEGIN PUBLIC KEY-----\", b\"-----BEGIN CERTIFICATE-----\", b\"-----BEGIN RSA PUBLIC KEY-----\", b\"-----BEGIN PRIVATE KEY-----\", b\"ssh-rsa\", b\"ssh-ed25519\", b\"ecdsa-sha2-nistp256\"]\n        if any(s in key for s in invalid_strings):",
+            ),
+        ],
+        # ECAlgorithm.prepare_key no longer loads OpenSSH public keys (ecdsa-sha2-* verification breaks).
+        "drop-ecdsa-openssh-loading": lambda path: mutate_once(
+            path / "jwt/algorithms.py",
+            "                if key.startswith(b\"ecdsa-sha2-\"):\n                    key = load_ssh_public_key(key)\n                else:\n                    key = load_pem_public_key(key)",
+            "                key = load_pem_public_key(key)",
+        ),
+        # OKPAlgorithm.prepare_key keeps the InvalidKeyError contract but accepts any loaded key object (ssh-rsa, RSA public key).
+        "eddsa-accepts-wrong-key-family": lambda path: mutate_once(
+            path / "jwt/algorithms.py",
+            "            if not isinstance(\n                key,\n                (Ed25519PrivateKey, Ed25519PublicKey, Ed448PrivateKey, Ed448PublicKey),\n            ):",
+            "            if key is None or isinstance(key, (bytes, str)):",
+        ),
     }
     mutant_root = artifacts / "mutants"
     mutant_root.mkdir(exist_ok=True)
@@ -98,6 +141,13 @@ def mutate_once(path, before, after):
     if source.count(before) != 1:
         raise RuntimeError(f"Expected exactly one mutation target in {path.name}")
     path.write_text(source.replace(before, after), encoding="utf-8")
+
+
+def mutate_every(path, pattern, replacement, minimum):
+    source, count = re.subn(pattern, replacement, path.read_text(encoding="utf-8"))
+    if count < minimum:
+        raise RuntimeError(f"Expected at least {minimum} mutation targets in {path.name}, found {count}")
+    path.write_text(source, encoding="utf-8")
 
 
 if __name__ == "__main__":

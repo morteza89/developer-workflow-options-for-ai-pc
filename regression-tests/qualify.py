@@ -41,6 +41,10 @@ def snapshot(destination, suite=None):
     return destination
 
 
+def behavioral_names(suite):
+    return engine.behavioral_test_names(ast.parse(suite))
+
+
 def validate_package():
     manifest = engine.WORKFLOW
     faults = manifest["fault_variants"]
@@ -113,6 +117,65 @@ def controls(reference):
         "    assert utils.get_auth_from_url('host') == ('stub', 'stub')\n"
         "    assert utils.urldefragauth('host') == 'stub'\n"
     )
+    hash_only = (
+        "import hashlib\n"
+        "from pathlib import Path\n"
+        "import requests.utils as utils\n"
+        "def test_source_unchanged():\n"
+        f"    assert hashlib.sha256(Path(utils.__file__).read_bytes()).hexdigest() == '{engine.digest(ROOT / 'starter/requests/utils.py')}'\n"
+    )
+    source_text = (
+        "import inspect\n"
+        "import requests.utils as utils\n"
+        "def test_prepend_source():\n"
+        "    source = inspect.getsource(utils.prepend_scheme_if_needed)\n"
+        "    assert 'if scheme is None:' in source\n"
+        "    assert 'netloc = parsed.netloc' in source\n"
+        "    assert 'netloc = \"@\".join([auth, netloc])' in source\n"
+        "    assert 'query, fragment))' in source\n"
+        "def test_auth_source():\n"
+        "    source = inspect.getsource(utils.get_auth_from_url)\n"
+        "    assert 'unquote(parsed.username)' in source\n"
+        "    assert 'auth = (\"\", \"\")' in source\n"
+        "def test_defrag_source():\n"
+        "    source = inspect.getsource(utils.urldefragauth)\n"
+        "    assert 'rsplit(\"@\", 1)' in source\n"
+        "    assert 'query, \"\"))' in source\n"
+    )
+    negative_only = (
+        "from requests.utils import get_auth_from_url, prepend_scheme_if_needed, urldefragauth\n"
+        "def test_prepend_not_broken():\n"
+        "    assert prepend_scheme_if_needed('http://a.org/p', 'https') != 'https://a.org/p'\n"
+        "    assert prepend_scheme_if_needed('a.org/p?q=1', 'https') != 'https://a.org/p'\n"
+        "    assert prepend_scheme_if_needed('a.org:81/p', 'https') != 'https://a.org/p'\n"
+        "    assert prepend_scheme_if_needed('//u:p@a.org/p', 'https') != 'https://a.org/p'\n"
+        "def test_auth_not_broken():\n"
+        "    assert None not in get_auth_from_url('https://a.org/')\n"
+        "    assert '%40' not in get_auth_from_url('https://u%40x:p%20w@a.org/')\n"
+        "def test_defrag_not_broken():\n"
+        "    assert '#' not in urldefragauth('https://a.org/p#f')\n"
+        "    assert '@' not in urldefragauth('https://u:p@a.org/p')\n"
+    )
+    missing_creds_only = (
+        "from requests.utils import get_auth_from_url\n"
+        "def test_missing():\n"
+        "    assert get_auth_from_url('https://a.org/') == ('', '')\n"
+    )
+    no_decode_reference = reference
+    for encoded_case in (
+        '        ("https://read%40er:p%3Ass%20word@example.com", ("read@er", "p:ss word")),\n',
+        '        ("https://a%2Bb:c%2Fd@example.com", ("a+b", "c/d")),\n',
+    ):
+        if no_decode_reference.count(encoded_case) != 1:
+            raise RuntimeError("Expected one encoded-credential reference case to remove")
+        no_decode_reference = no_decode_reference.replace(encoded_case, "", 1)
+    if "%" in no_decode_reference:
+        raise RuntimeError("Encoded credentials remain in the no-decode control")
+    xfail_xpass = "import pytest\n" + reference + (
+        "\n@pytest.mark.xfail(reason='flaky', strict=False)\n"
+        "def test_always_xpass():\n"
+        "    assert prepend_scheme_if_needed('a.org', 'https') == 'https://a.org'\n"
+    )
     return {
         "empty": "",
         "trivial": "def test_trivial():\n    assert True\n",
@@ -128,20 +191,57 @@ def controls(reference):
             "\nimport requests.utils as utils\n"
             "utils.prepend_scheme_if_needed = lambda *args: 'stub'\n"
         ),
+        "hash_only": hash_only,
+        "source_text": source_text,
+        "negative_only": negative_only,
+        "missing_creds_only": missing_creds_only,
+        "no_decode_reference": no_decode_reference,
+        "xfail_xpass": xfail_xpass,
     }
 
 
-def pytest_summary(report, exit_code, baseline=None):
+# Controls that must be accepted: fault credit requires behavioral equality assertions, not a specific style.
+def valid_controls(reference):
+    unittest_style = (
+        "import unittest\n"
+        "from requests.utils import get_auth_from_url, prepend_scheme_if_needed, urldefragauth\n"
+        "class UrlUtilityTests(unittest.TestCase):\n"
+        "    def test_prepend(self):\n"
+        "        self.assertEqual(prepend_scheme_if_needed('http://a.org/p', 'https'), 'http://a.org/p')\n"
+        "        self.assertEqual(prepend_scheme_if_needed('a.org:81/p?q=1', 'https'), 'https://a.org:81/p?q=1')\n"
+        "        self.assertEqual(prepend_scheme_if_needed('//u:p@a.org/p', 'https'), 'https://u:p@a.org/p')\n"
+        "    def test_auth(self):\n"
+        "        self.assertEqual(get_auth_from_url('https://u%40x:p%20w@a.org/'), ('u@x', 'p w'))\n"
+        "        self.assertEqual(get_auth_from_url('https://a.org/'), ('', ''))\n"
+        "    def test_defrag(self):\n"
+        "        self.assertEqual(urldefragauth('https://u:p@a.org:81/p?q=1#f'), 'https://a.org:81/p?q=1')\n"
+    )
+    legit_with_raise_helper = reference + (
+        "\ndef _require_str(value):\n"
+        "    if not isinstance(value, str):\n"
+        "        raise TypeError('expected str')\n"
+        "    return value\n"
+        "\ndef test_helper():\n"
+        "    assert _require_str(prepend_scheme_if_needed('a.org', 'https')) == 'https://a.org'\n"
+    )
+    return {"unittest_style": unittest_style, "legit_with_raise_helper": legit_with_raise_helper}
+
+
+# Controls whose rejection must specifically include failing to detect the decoupled decoding fault.
+MUST_MISS_DECODE_FAULT = {"missing_creds_only", "no_decode_reference"}
+
+
+def pytest_summary(report, exit_code, baseline=None, behavioral=frozenset()):
     summary = engine.junit_summary(report)
     failures = [failure for case in ET.parse(report).getroot().iter("testcase") for failure in case.findall("failure")]
     summary["ordinary_assertion_failures"] = sum(failure.get("message", "").startswith(("assert ", "AssertionError")) for failure in failures)
     summary["exit_code"] = exit_code
     summary["clean_pass"] = exit_code == 0 and summary["total"] > 0 and summary["passed"] == summary["total"]
-    summary["detected"] = baseline is not None and engine.fault_detected(report, exit_code, baseline)
+    summary["detected"] = baseline is not None and engine.fault_detected(report, exit_code, baseline, behavioral)
     return summary
 
 
-def local_pytest(source, tests, output, baseline=None):
+def local_pytest(source, tests, output, baseline=None, behavioral=frozenset()):
     output.mkdir(parents=True)
     report = output / "pytest.xml"
     environment = dict(os.environ, PYTHONPATH=str(source.resolve()), PYTHONDONTWRITEBYTECODE="1", PYTEST_DISABLE_PLUGIN_AUTOLOAD="1")
@@ -150,10 +250,10 @@ def local_pytest(source, tests, output, baseline=None):
         cwd=source, env=environment, capture_output=True, text=True, encoding="utf-8", timeout=60,
     )
     (output / "pytest.txt").write_text(completed.stdout + completed.stderr, encoding="utf-8")
-    return pytest_summary(report, completed.returncode, baseline)
+    return pytest_summary(report, completed.returncode, baseline, behavioral)
 
 
-def docker_pytest(source, tests, output, image, policy, baseline=None):
+def docker_pytest(source, tests, output, image, policy, baseline=None, behavioral=frozenset()):
     output.mkdir(parents=True)
     name = "requests-witness-" + uuid.uuid4().hex
     try:
@@ -175,7 +275,7 @@ def docker_pytest(source, tests, output, image, policy, baseline=None):
         copied = engine.docker("exec", name, "cat", "/tmp/report.xml", timeout=policy["verifier_timeout_seconds"])
         report = output / "pytest.xml"
         report.write_text(copied.stdout, encoding="utf-8")
-        result = pytest_summary(report, completed.returncode, baseline)
+        result = pytest_summary(report, completed.returncode, baseline, behavioral)
         result["container"] = name
         save(output / "result.json", result)
         return result
@@ -187,7 +287,11 @@ def docker_pytest(source, tests, output, image, policy, baseline=None):
 
 
 def witness_checks(artifacts, faults, runner=local_pytest, witness=None):
+    witness_source = (ROOT / "grader/test_witnesses.py").read_text(encoding="utf-8")
     witness = witness or str(ROOT / "grader/test_witnesses.py")
+    behavioral = behavioral_names(witness_source)
+    if {"test_" + fault["name"] for fault in faults} - behavioral:
+        raise RuntimeError("Every protected witness must assert equality on a target function call")
     clean = snapshot(artifacts / "witness-clean/source")
     baseline = runner(clean, [witness], artifacts / "witness-clean/output")
     if not baseline["clean_pass"]:
@@ -196,7 +300,7 @@ def witness_checks(artifacts, faults, runner=local_pytest, witness=None):
     for fault in faults:
         source = snapshot(artifacts / ("witness-" + fault["name"]) / "source")
         mutate_once(source, fault)
-        result = runner(source, [witness], source.parent / "output", baseline)
+        result = runner(source, [witness], source.parent / "output", baseline, behavioral)
         assigned_failed = any(case["name"] == "test_" + fault["name"] and case["status"] == "failed" for case in result["cases"])
         if not result["detected"] or not assigned_failed:
             raise RuntimeError(f"Independent witness did not detect {fault['name']}")
@@ -213,16 +317,16 @@ def local_check(artifacts, faults, reference):
         baseline = local_pytest(source, [GENERATED], directory / "clean/output")
         phases = {"generated": baseline}
         tree = ast.parse(suite)
+        source_eligible = engine.has_test_assertion(tree)
+        behavioral = frozenset()
         if engine.WORKFLOW.get("fault_variants"):
-            source_eligible = any(isinstance(node, ast.Assert) and not isinstance(node.test, ast.Constant) for node in ast.walk(tree))
             source_eligible = source_eligible and engine.regression_source_issue(tree) is None
-        else:
-            source_eligible = engine.has_test_assertion(tree)
+            behavioral = engine.behavioral_test_names(tree)
         accepted = baseline["clean_pass"] and source_eligible
         for fault in faults:
             mutant = snapshot(directory / fault["name"] / "source", suite)
             mutate_once(mutant, fault)
-            result = local_pytest(mutant, [GENERATED], mutant.parent / "output", baseline)
+            result = local_pytest(mutant, [GENERATED], mutant.parent / "output", baseline, behavioral)
             phases["fault_" + fault["name"]] = result
             accepted = accepted and result["detected"]
         results[name] = {"accepted": accepted, "source_eligible": source_eligible, "test_results": phases}
@@ -233,17 +337,29 @@ def local_check(artifacts, faults, reference):
     for name, suite in controls(reference).items():
         if evaluate(name, suite):
             raise RuntimeError(f"Local evaluator accepted invalid control: {name}")
+        if name in MUST_MISS_DECODE_FAULT and results[name]["test_results"]["fault_fail_percent_decode_credentials"]["detected"]:
+            raise RuntimeError(f"Control {name} must not detect fail_percent_decode_credentials")
+    for name, suite in valid_controls(reference).items():
+        if not evaluate(name, suite):
+            raise RuntimeError(f"Local evaluator rejected valid control: {name}")
     return results
 
 
 def isolated_check(artifacts, faults, policy, reference, image):
     identifier = engine.image_id(image)
 
-    def run_witness(source, tests, output, baseline=None):
-        return docker_pytest(source, tests, output, identifier, policy, baseline)
+    def run_witness(source, tests, output, baseline=None, behavioral=frozenset()):
+        return docker_pytest(source, tests, output, identifier, policy, baseline, behavioral)
 
     results = {"image": identifier, "protected_witnesses": witness_checks(artifacts, faults, run_witness, "/grader/test_witnesses.py")}
-    for name, suite in {"reference": reference, **controls(reference)}.items():
+    accepted_suites = {"reference": reference, **valid_controls(reference)}
+    expected_issues = {
+        "alias-preserving-stub": "production_function_replacement",
+        "hash_only": "source_introspection",
+        "source_text": "source_introspection",
+        "xfail_xpass": "xfail_marker_not_permitted",
+    }
+    for name, suite in {**accepted_suites, **controls(reference)}.items():
         directory = artifacts / name
         source = snapshot(directory / "source", suite)
         output = directory / "output"
@@ -255,17 +371,19 @@ def isolated_check(artifacts, faults, policy, reference, image):
             raise RuntimeError("Shared engine fault extension is not ready: missing named fault results")
         if result.get("cleanup_errors") or result.get("phase_errors"):
             raise RuntimeError(f"Infrastructure failure during {name}")
-        if bool(result["accepted"]) != (name == "reference"):
+        if bool(result["accepted"]) != (name in accepted_suites):
             raise RuntimeError(f"Unexpected shared verifier acceptance for {name}")
-        if name == "alias-preserving-stub" and result.get("regression_issue") != "production_function_replacement":
-            raise RuntimeError("Alias-preserving stub must be rejected as production_function_replacement")
-        if name == "reference" and not all(result["checks"].values()):
-            raise RuntimeError("Reference did not satisfy every verifier check")
-        if name == "reference":
+        if name in expected_issues and result.get("regression_issue") != expected_issues[name]:
+            raise RuntimeError(f"Control {name} must be rejected as {expected_issues[name]}")
+        if name in MUST_MISS_DECODE_FAULT and result["checks"]["fault_fail_percent_decode_credentials"]:
+            raise RuntimeError(f"Control {name} must not detect fail_percent_decode_credentials")
+        if name in accepted_suites and not all(result["checks"].values()):
+            raise RuntimeError(f"{name} did not satisfy every verifier check")
+        if name in accepted_suites:
             for fault in faults:
                 summary = result["test_results"]["fault_" + fault["name"]]
                 if summary["failed"] < 1 or summary["errors"] or summary["skipped"] or not summary["cases"]:
-                    raise RuntimeError(f"Missing assertion-based reference evidence for {fault['name']}")
+                    raise RuntimeError(f"Missing assertion-based evidence for {fault['name']} in {name}")
         results[name] = result
     return results
 
@@ -283,7 +401,7 @@ def main():
     evidence = {"mode": args.command, "isolated_qualification": args.command == "check", "starting_commit": engine.WORKFLOW["starting_commit"], "results": results}
     save(artifacts / "qualification.json", evidence)
     label = "non-isolated local diagnostic" if args.command == "local" else "isolated Docker qualification"
-    print(f"Passed {label}: reference detects {len(faults)} faults; {len(controls(reference))} invalid controls rejected.")
+    print(f"Passed {label}: reference detects {len(faults)} faults; {len(controls(reference))} invalid controls rejected; {len(valid_controls(reference))} valid controls accepted.")
     print(f"Evidence: {artifacts}")
     return 0
 

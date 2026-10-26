@@ -29,6 +29,22 @@ The shared [model setup helper](dependency-migration/model_setup.py) checks requ
 
 Start with [Dependency Migration](dependency-migration/README.md) for the current local-model pilot and its 600-second policy. Option 3, [Security Repair](security-repair/README.md), is a separate PyJWT backport task, offline-qualified and now using a shared 600-second budget. Earlier 240-second pilots show OpenAI accepted, 27B timed out near completion, and 8B submitted incomplete; these need same-freeze 600-second reruns and are not scored results.
 
+## Grader Corrections (26 October 2026)
+
+A multi-reviewer audit found that every workflow's acceptance could be satisfied by submissions that violate its contract, and that the local-vs-cloud loop was not symmetric. The following was corrected; all three workflows were requalified and received new freezes (Migration v11, Security v10, Regression v3). Historical `result.json` files were **not** edited.
+
+**Shared engine.** Multi-action replies are now normalised identically for every provider (previously only OpenAI replies were forgiven), and each attempt records `request_settings` (sampling, temperature, reasoning, token cap semantics, API) so the remaining configuration differences between local greedy/no-thinking requests and cloud default-sampling/reasoning requests are disclosed in reports rather than hidden. Cloud fees are summed over completed requests and flagged `≥ (incomplete)` when a request was in flight at cutoff. The active-run lock is one per PC across all workflows. Interrupted attempts snapshot partial work before cleanup. `accepted_within_budget` now requires an explicit submission. The OpenAI client is pinned to the profile endpoint.
+
+**Dependency Migration.** The deprecated-API filter now actually runs (`pytest -W error::pydantic.PydanticDeprecatedSince20`; the interpreter-level flag was silently ignored), so `.dict()`/`.json()` calls fail. Integral floats are rejected, GET response integer types are asserted, both categories are normalised, and the runtime-record test no longer prescribes `model_validate` (TypeAdapter and constructor loading are accepted positive controls). Trivial `assert 1 == 1` tests no longer count as generated tests. Re-verifying all 13 historically accepted model submissions under the new grader: **all 13 still pass.**
+
+**Security Repair.** Protected tests now reject disabled signature verification, wrong-key/tampered-signature acceptance, prefix-only PEM/SSH detection, narrowed key-format detection, dropped ECDSA OpenSSH loading, and wrong-key-family EdDSA; ten negative controls are qualified. Re-verifying the 10 historically accepted model submissions (freeze v9) under the new grader: **8 fail** — every 27B/Fable submission (7) used prefix-only detection that accepts a PEM preceded by a newline or an SSH key with an options prefix as an HMAC secret, and one GPT-6.1 Sol submission (`925c4a67`) accepted traditional private PEM formats; `d20c984b` (GPT-6 Astra) and `f65c4447` (GPT-6.1 Sol) still pass. Treat the historical "accepted" security rows for local models as **not secure**; they must be rerun on v10.
+
+**Regression Tests.** Fault credit now requires the failing test to compare a target-function call against an expected value; suites that hash the source, inspect it, use only negative assertions, use `xfail`, or stub the targets are rejected, while `unittest`-style suites and helpers containing `raise` are accepted. The percent-decoding fault no longer overlaps the missing-credential fault (it now breaks only username decoding), so 8/8 requires an encoded-username assertion. Re-verifying the 8 historically accepted model submissions under the new fault set and rules: **all 8 still detect 8/8.**
+
+**GUI.** Closing the window with an active pilot now asks to stop it first; warm-up readiness is bound to the model selected when the warm-up started; a pilot cannot start while another is running; reports open only after a successful generation; every local launcher wrapper clears `API_KEY`.
+
+**Deliverable.** Each attempt's `result.json` and `freeze.json`, plus comparison reports, are now tracked so a clone contains the recorded runs cited here; large trajectories and submissions remain local. Reports now show the freeze file name, per-profile attribution, request settings, within-budget status, format-normalisation counts, and local prompt/completion tokens.
+
 | Folder | Scope | State |
 |---|---|---|
 | [dependency-migration](dependency-migration/README.md) | Migrate a small expense service from Pydantic v1 to native v2 | Implemented; 600-second PTL pilots: 27B and OpenAI accepted, 8B rejected; repeated qualification runs pending |
@@ -51,7 +67,7 @@ The [dedicated launcher](models/start-qwen3-coder-30b.cmd) uses the existing OVM
 
 Close and reopen an existing controller, select Coder, click **Start selected local model**, wait for **AVAILABLE**, and click **Test connection** before **Run unscored pilot**. Stop the current local server before switching models. The controller prevents a previously started model's readiness from authorizing a different model. Model setup, compilation, and warmup are outside the work budget. All models use the same agent and acceptance contract within each frozen task; the Coder response limit remains 2048 tokens and no cloud fallback is configured.
 
-Current GUI freezes are [Migration v10](dependency-migration/artifacts/freeze-600s-v10.json), [Security v9](security-repair/artifacts/freeze-600s-pyjwt-v9.json), and [Regression v2](regression-tests/artifacts/freeze-720s-requests-v2.json). Migration and Security were requalified and smoke-tested for the existing shared-engine changes; their previous freezes remain historical. For migration CLI runs, explicitly pass `--freeze .\dependency-migration\artifacts\freeze-600s-v10.json` from the repository root, since its older CLI default is retained. Do not compare the refreshed Migration/Security results directly with attempts from older task hashes; rerun other models on these same freezes first.
+Current GUI freezes are [Migration v11](dependency-migration/artifacts/freeze-600s-v11.json), [Security v10](security-repair/artifacts/freeze-600s-pyjwt-v10.json), and [Regression v3](regression-tests/artifacts/freeze-720s-requests-v3.json), created on 26 October 2026 after the grader and engine corrections described in [Grader Corrections](#grader-corrections-26-october-2026). Each was requalified and smoke-tested; the previous freezes (v10, v9, v2) and their attempts remain historical. The migration CLI default is now v11, so `bench.py run` and the GUI agree. Do not compare results across freezes; rerun every model on the current freezes before ranking.
 
 ### Initial Coder Pilots
 
@@ -93,7 +109,7 @@ The [Astra profile template](dependency-migration/profiles/openai-astra.json) is
 
 ## Regression Tests: Retained Budget
 
-Use **720 seconds for every model** in the current Regression Tests comparison, including local 27B, local 8B, and cloud profiles. The selected package remains [freeze-720s-requests-v2.json](regression-tests/artifacts/freeze-720s-requests-v2.json). The task, eight fault checks, 2048-token response limit, model profiles, and Docker image are unchanged from the duration-only follow-up. Early submission ends work; independent verification follows outside the work budget. The other two workflows remain at 600 seconds.
+Use **720 seconds for every model** in the current Regression Tests comparison, including local 27B, local 8B, and cloud profiles. The selected package is now [freeze-720s-requests-v3.json](regression-tests/artifacts/freeze-720s-requests-v3.json) (v2 is historical; see [Grader Corrections](#grader-corrections-26-october-2026)). The task, eight fault checks, 2048-token response limit, model profiles, and Docker image are unchanged; only the percent-decoding fault and the detection rules changed. Early submission ends work; independent verification follows outside the work budget. The other two workflows remain at 600 seconds.
 
 Verified unscored results for this freeze:
 

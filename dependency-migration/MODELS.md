@@ -109,7 +109,7 @@ Fill artifact/template/runtime hashes, startup time, memory and GPU/offline evid
 
 Then follow [README.md](README.md) for locked environments, fixture checks, Linux task image, freeze, offline smoke and a local pilot. For a same-task cross-laptop comparison, transfer the exact matching source/freeze and Docker image via `docker save`/`docker load`; record each host separately and run its own smoke. A rebuild may have a different image ID. Do not copy Windows virtual environments.
 
-**Current benchmark policy (October 12):** every local and cloud attempt receives 600 seconds (10 minutes) of agent work, followed by separate evaluation of saved files. Policy, task instructions and tests use this limit. Create `artifacts/freeze-600s-v9.json` for the current runner and image, then run its smoke on each laptop. Earlier freezes and attempts are historical; do not reuse them with this policy or overwrite them.
+**Current benchmark policy (October 12, freeze refreshed 26 October):** every local and cloud attempt receives 600 seconds (10 minutes) of agent work, followed by separate evaluation of saved files. Policy, task instructions and tests use this limit. The current freeze is `artifacts/freeze-600s-v11.json`; run its smoke on each laptop. Earlier freezes and attempts are historical; do not reuse them with this policy or overwrite them.
 
 ## Current Host: Working Article 27B
 
@@ -304,7 +304,7 @@ The pinned candidate is **GPT-6.1 Sol**, model ID `gpt-6.1-sol`, with standard s
 6. Run one unscored pilot from `dependency-migration`, against the same frozen task as the local attempts:
 
    ```powershell
-    .\.venv-runner\Scripts\python.exe bench.py run --profile profiles\ptl-openai.private.json --freeze artifacts\freeze-600s-v9.json --allow-cloud
+    .\.venv-runner\Scripts\python.exe bench.py run --profile profiles\ptl-openai.private.json --freeze artifacts\freeze-600s-v11.json --allow-cloud
    ```
 
 The runner records native input/output, cached input and cache-write tokens and estimates cost using the saved standard rate card. A usage mismatch or missing rate data produces an unknown fee rather than zero. Local evaluation runs after model work stops. Provider-side requests already in flight may remain billable after client termination. Keep this pilot unscored and the profile unqualified until the result, host metadata, and measurements have been reviewed.

@@ -48,11 +48,34 @@ def openai_finish_reason(response):
     return response.status
 
 
-def normalize_openai_action(text):
+def normalize_action(text):
     actions = re.findall(r"```mswea_bash_command\s*\n(.*?)\n```", text, re.DOTALL)
     if len(actions) <= 1:
         return text, len(actions)
     return f"```mswea_bash_command\n{actions[0]}\n```", len(actions)
+
+
+def request_settings(profile, policy):
+    provider = profile["provider"]
+    temperature = None if provider == "openai" else policy["temperature"]
+    if provider == "local":
+        thinking = (profile.get("extra_body") or {}).get("chat_template_kwargs", {}).get("enable_thinking")
+        reasoning = "disabled" if thinking is False else "model_default"
+    elif provider == "openai":
+        reasoning = "effort=" + profile["inference"]["reasoning_effort"]
+    else:
+        reasoning = "model_default"
+    return {
+        "provider": provider,
+        "model": profile.get("model"),
+        "max_output_tokens": policy["max_output_tokens"],
+        "temperature": temperature,
+        "sampling": "provider_default" if temperature is None else "greedy" if temperature == 0 else "temperature",
+        "reasoning": reasoning,
+        "output_cap_includes_reasoning_tokens": provider == "openai",
+        "retries": 0,
+        "api": {"local": "chat.completions", "openai": "responses", "anthropic": "messages"}.get(provider),
+    }
 
 
 def request_error_details(error):
@@ -97,7 +120,7 @@ def run_worker(connection, profile, policy, image, container_name, prepared, out
     elif profile["provider"] == "local":
         client = openai.OpenAI(base_url=profile["base_url"], api_key="unused", **client_options)
     elif profile["provider"] == "openai":
-        client = openai.OpenAI(api_key=os.environ[profile["api_key_env"]], **client_options)
+        client = openai.OpenAI(base_url=profile["base_url"], api_key=os.environ[profile["api_key_env"]], **client_options)
     else:
         client = anthropic.Anthropic(api_key=os.environ[profile["api_key_env"]], base_url=profile["base_url"], **client_options)
 
@@ -124,19 +147,19 @@ def run_worker(connection, profile, policy, image, container_name, prepared, out
                 options = request_options(profile, policy)
                 if profile["provider"] == "local":
                     response = client.chat.completions.create(messages=messages, **options)
-                    text = response.choices[0].message.content or ""
+                    raw_text = response.choices[0].message.content or ""
                     finish = response.choices[0].finish_reason
                 elif profile["provider"] == "openai":
                     response = client.responses.create(**openai_response_options(profile, policy, messages))
                     raw_text = response.output_text or ""
-                    text, action_block_count = normalize_openai_action(raw_text)
                     finish = openai_finish_reason(response)
                 else:
                     response = client.messages.create(system=messages[0]["content"], messages=messages[1:], **options)
-                    text = "".join(block.text for block in response.content if block.type == "text")
+                    raw_text = "".join(block.text for block in response.content if block.type == "text")
                     finish = response.stop_reason
-                event = {"kind": "request_end", "at": time.perf_counter(), "seconds": time.perf_counter() - started, "model": response.model, "usage": response.usage.model_dump() if response.usage else None, "response_id": response.id, "finish_reason": finish, "content": raw_text if profile["provider"] == "openai" else text}
-                if profile["provider"] == "openai" and action_block_count > 1:
+                text, action_block_count = normalize_action(raw_text)
+                event = {"kind": "request_end", "at": time.perf_counter(), "seconds": time.perf_counter() - started, "model": response.model, "usage": response.usage.model_dump() if response.usage else None, "response_id": response.id, "finish_reason": finish, "content": raw_text}
+                if action_block_count > 1:
                     event["normalized_action_blocks"] = action_block_count
                     event["agent_content"] = text
                 append_event(events, event)

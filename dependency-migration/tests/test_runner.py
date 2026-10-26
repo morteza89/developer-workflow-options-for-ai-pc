@@ -486,6 +486,285 @@ Assert-That ($null -eq $script:serverProcess -and $null -eq $script:serverModel)
 ''')
 
 
+CONTROLLER_MESSAGEBOX_STUB = r'''
+Add-Type -TypeDefinition @'
+namespace ControllerTest {
+    public static class MessageBox {
+        public static string Choice = "Yes";
+        public static string LastMessage;
+        public static System.Collections.Generic.List<string> Titles = new System.Collections.Generic.List<string>();
+        public static string Show(string text, string title, string buttons, string icon) {
+            LastMessage = text;
+            Titles.Add(title);
+            return Choice;
+        }
+    }
+}
+'@
+'''
+
+
+@pytest.mark.parametrize("case", ["yes", "no", "stop-fails"])
+def test_controller_closing_with_active_pilot(tmp_path, case):
+    run_controller_powershell(tmp_path, CONTROLLER_MESSAGEBOX_STUB + r'''
+$case = '__CASE__'
+$script:logs = @()
+function Write-Log($message) { $script:logs += $message }
+$script:kills = @()
+function Start-Process { param($FilePath, $ArgumentList, $WindowStyle, [switch]$Wait, [switch]$PassThru)
+    Assert-That ($FilePath -eq 'taskkill.exe' -and $Wait) 'Unexpected process launch while closing'
+    $script:kills += $ArgumentList
+    if ($ArgumentList -eq '/PID 4242 /T /F') {
+        Assert-That $PassThru 'Pilot stop ignored the taskkill exit status'
+        if ($case -eq 'stop-fails') { return [pscustomobject]@{ ExitCode = 128 } }
+        $script:taskProcess.HasExited = $true
+    }
+    [pscustomobject]@{ ExitCode = 0 }
+}
+. ([scriptblock]::Create((Import-ControllerFunction 'Stop-ActivePilot')))
+$closing = Get-ControllerHandler 'form' 'Add_FormClosing'
+$timer = [pscustomobject]@{ Stopped = $false }
+$timer | Add-Member ScriptMethod Stop { $this.Stopped = $true }
+$pilot = [pscustomobject]@{ Id = 4242; HasExited = $false; ExitCode = $null }
+$script:taskProcess = $pilot
+$script:serverProcess = [pscustomobject]@{ Id = 5151; HasExited = $false }
+$script:openReportPath = 'pending-report.md'
+[ControllerTest.MessageBox]::Choice = if ($case -eq 'no') { 'No' } else { 'Yes' }
+$closingEvent = [pscustomobject]@{ Cancel = $false }
+$closingEvent | ForEach-Object $closing
+$titles = [ControllerTest.MessageBox]::Titles
+Assert-That ($titles.Count -ge 1 -and $titles[0] -eq 'Pilot running') 'Pilot question was not asked first'
+Assert-That ([ControllerTest.MessageBox]::LastMessage -like 'A pilot is running (possibly billable)*' -or $titles.Count -gt 1) 'Pilot prompt text changed'
+switch ($case) {
+    'yes' {
+        Assert-That (-not $closingEvent.Cancel -and $timer.Stopped) 'Yes did not close the window'
+        Assert-That ($script:kills.Count -eq 2 -and $script:kills[0] -eq '/PID 4242 /T /F' -and $script:kills[1] -eq '/PID 5151 /T /F') 'Pilot was not stopped before the server'
+        Assert-That ($null -eq $script:taskProcess -and $null -eq $script:openReportPath) 'Stopped pilot state leaked'
+        Assert-That ($titles.Count -eq 2 -and $titles[1] -eq 'Local server running') 'Server question did not follow the pilot question'
+        Assert-That (($script:logs -join ' ').Contains('artifacts are retained')) 'Artifact retention was not logged'
+    }
+    'no' {
+        Assert-That ($closingEvent.Cancel -and -not $timer.Stopped) 'No did not cancel closing'
+        Assert-That ($script:kills.Count -eq 0) 'No stopped a process'
+        Assert-That ([object]::ReferenceEquals($script:taskProcess, $pilot) -and -not $pilot.HasExited) 'No altered the pilot'
+        Assert-That ($titles.Count -eq 1) 'No proceeded to later questions'
+    }
+    'stop-fails' {
+        Assert-That ($closingEvent.Cancel -and -not $timer.Stopped) 'Failed stop closed the window'
+        Assert-That ($script:kills.Count -eq 1 -and $script:kills[0] -eq '/PID 4242 /T /F') 'Failed pilot stop killed the server'
+        Assert-That ([object]::ReferenceEquals($script:taskProcess, $pilot)) 'Failed stop cleared the pilot'
+        Assert-That (($script:logs -join ' ').Contains('Could not stop the running pilot')) 'Stop failure was not logged'
+        Assert-That ($titles.Count -eq 1) 'Failed stop proceeded to later questions'
+    }
+}
+$script:taskProcess = $null
+$script:serverProcess = $null
+[ControllerTest.MessageBox]::Titles.Clear()
+$closingEvent = [pscustomobject]@{ Cancel = $false }
+$closingEvent | ForEach-Object $closing
+Assert-That (-not $closingEvent.Cancel -and [ControllerTest.MessageBox]::Titles.Count -eq 0) 'Idle close asked a pilot question'
+'''.replace('__CASE__', case))
+
+
+PILOT_GUI_SETUP = CONTROLLER_MESSAGEBOX_STUB + r'''
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+$script:selectedModel = 'qwen3.8-27b-ov'
+$script:changeDuringWarmup = $false
+$script:logs = @()
+$script:launches = @()
+$script:pickerDuringRequest = @()
+$script:pickerAtStatusUpdate = @()
+function Write-Log($message) { $script:logs += $message }
+function Get-SelectedModel {
+    [pscustomobject]@{ Name = "display $script:selectedModel"; Path = 'profile sentinel.json'; Profile = [pscustomobject]@{
+        provider = 'local'; model = $script:selectedModel; expected_returned_model = $script:selectedModel
+        base_url = 'http://127.0.0.1:8000/v3'; extra_body = [pscustomobject]@{ chat_template_kwargs = $null } } }
+}
+function Invoke-RestMethod { param($Uri, $Method, $Headers, $ContentType, $Body, $TimeoutSec)
+    Assert-That ($Uri -eq 'http://127.0.0.1:8000/v3/chat/completions') 'Warmup used an unexpected endpoint'
+    $script:pickerDuringRequest += $modelPicker.Enabled
+    $requested = ($Body | ConvertFrom-Json).model
+    if ($script:changeDuringWarmup) { $script:selectedModel = 'qwen38-fable5-int4' }
+    [pscustomobject]@{ model = $requested; choices = @([pscustomobject]@{ message = [pscustomobject]@{ content = 'READY' } }); usage = [pscustomobject]@{ total_tokens = 3 } }
+}
+function Update-Status { $script:pickerAtStatusUpdate += $modelPicker.Enabled; $modelPicker.Enabled = -not ($script:setupProcess -or $script:taskProcess) }
+function Start-TrackedProcess($FileName, $Arguments, $WorkingDirectory, $Tag) {
+    $script:launches += [pscustomobject]@{ Arguments = $Arguments; Tag = $Tag }
+    [pscustomobject]@{ Id = 777; HasExited = $false; ExitCode = $null }
+}
+$form = [pscustomobject]@{ Cursor = $null }
+$warmupButton = [pscustomobject]@{ Enabled = $true }
+$runButton = [pscustomobject]@{ Enabled = $true }
+$throughputStatus = [pscustomobject]@{ Text = '' }
+$script:installationSettings = $null
+$script:benchScript = 'bench.py'
+$script:freezePath = Join-Path $env:CONTROLLER_TEST_TEMP 'freeze test.json'
+$script:runnerPython = 'python.exe'
+$script:workflowRoot = $env:CONTROLLER_TEST_TEMP
+$script:taskProcess = $null
+$script:serverReady = $false
+$script:warmupReady = $false
+$script:warmupModel = $null
+$warmup = Get-ControllerHandler 'warmupButton' 'Add_Click'
+$run = Get-ControllerHandler 'runButton' 'Add_Click'
+'''
+
+
+def test_controller_warmup_binds_readiness_to_selection(tmp_path):
+    run_controller_powershell(tmp_path, PILOT_GUI_SETUP + r'''
+& $warmup
+Assert-That ($script:pickerDuringRequest.Count -eq 1 -and -not $script:pickerDuringRequest[0]) 'Model picker stayed enabled during the warmup'
+Assert-That ($script:pickerAtStatusUpdate.Count -eq 1 -and -not $script:pickerAtStatusUpdate[0] -and $modelPicker.Enabled) 'Picker was not re-enabled through Update-Status'
+Assert-That ($script:warmupReady -and $script:warmupModel -ceq 'qwen3.8-27b-ov') 'Stable warmup did not bind readiness to the model'
+Assert-That ([string]::IsNullOrEmpty([ControllerTest.MessageBox]::LastMessage)) "Warmup raised an error: $([ControllerTest.MessageBox]::LastMessage)"
+$script:changeDuringWarmup = $true
+& $warmup
+Assert-That (-not $script:warmupReady -and $null -eq $script:warmupModel) 'Selection change during warmup recorded readiness'
+Assert-That (($script:logs -join ' ').Contains('Selection changed during the warmup')) 'Selection change was not logged'
+Assert-That ([string]::IsNullOrEmpty([ControllerTest.MessageBox]::LastMessage)) 'Selection change was reported as a warmup error'
+Assert-That ($modelPicker.Enabled) 'Picker stayed locked after the changed-selection warmup'
+& $run
+Assert-That ($script:launches.Count -eq 0) 'Pilot started without readiness after the selection changed'
+$script:changeDuringWarmup = $false
+$script:selectedModel = 'qwen3.8-27b-ov'
+& $warmup
+Assert-That ($script:warmupReady -and $script:warmupModel -ceq 'qwen3.8-27b-ov') 'Repeat warmup did not restore readiness'
+$script:selectedModel = 'qwen38-fable5-int4'
+$script:serverReady = $true
+& $run
+Assert-That ($script:launches.Count -eq 0) 'Pilot started with readiness recorded for a different model'
+Assert-That (($script:logs -join ' ').Contains('Test connection passed for qwen3.8-27b-ov')) 'Model mismatch was not explained'
+Assert-That ($script:warmupReady -and $script:warmupModel -ceq 'qwen3.8-27b-ov') 'Refused run changed readiness'
+$script:selectedModel = 'qwen3.8-27b-ov'
+$script:serverReady = $false
+& $run
+Assert-That ($script:launches.Count -eq 1 -and $script:launches[0].Tag -eq 'pilot') 'Matching selection could not run'
+Assert-That ($script:launches[0].Arguments.Contains('--profile "profile sentinel.json"') -and $script:launches[0].Arguments.Contains('--freeze "' + $script:freezePath + '"')) 'Pilot arguments lost quoting'
+''')
+
+
+def test_controller_run_refuses_while_task_is_active(tmp_path):
+    run_controller_powershell(tmp_path, PILOT_GUI_SETUP + r'''
+& $warmup
+Assert-That ($script:warmupReady) 'Warmup did not pass'
+$active = [pscustomobject]@{ Id = 4242; HasExited = $false; ExitCode = $null }
+$script:taskProcess = $active
+$script:serverReady = $true
+$runButton.Enabled = $true
+$script:logs = @()
+& $run
+Assert-That ($script:launches.Count -eq 0) 'Second pilot started while a task was active'
+Assert-That (($script:logs -join ' ').Contains('A pilot is already running')) 'Active pilot refusal was not logged'
+Assert-That ([ControllerTest.MessageBox]::LastMessage -like 'A pilot is already running*') 'Active pilot refusal was not shown'
+Assert-That ([object]::ReferenceEquals($script:taskProcess, $active)) 'Refusal replaced the active task'
+$active.HasExited = $true
+& $run
+Assert-That ($script:launches.Count -eq 1 -and -not [object]::ReferenceEquals($script:taskProcess, $active)) 'Finished task still blocked the next pilot'
+''')
+
+
+@pytest.mark.parametrize("case", ["exit-0", "exit-3", "exit-0-missing-file", "exit-null", "start-failed"])
+def test_controller_comparison_report_opens_only_on_success(tmp_path, case):
+    run_controller_powershell(tmp_path, r'''
+$case = '__CASE__'
+$script:logs = @()
+$script:opened = @()
+$script:started = @()
+function Write-Log($message) { $script:logs += $message }
+function Update-Status { }
+function Update-ThroughputStatus { }
+function Update-ModelPreparation { }
+function Read-WatchedFiles { }
+function Start-Process { param($FilePath) $script:opened += $FilePath }
+function Start-TrackedProcess($FileName, $Arguments, $WorkingDirectory, $Tag) {
+    if ($case -eq 'start-failed') { throw 'Runner is missing' }
+    $script:started += [pscustomobject]@{ Arguments = $Arguments; Tag = $Tag }
+    $process = [pscustomobject]@{ Id = 909; HasExited = $false; ExitCode = $null }
+    $process | Add-Member ScriptMethod Refresh { }
+    $process
+}
+$script:workflowRoot = $env:CONTROLLER_TEST_TEMP
+$script:artifactRoot = Join-Path $script:workflowRoot 'artifacts'
+New-Item -ItemType Directory -Path $script:artifactRoot | Out-Null
+$script:reportScript = 'comparison_report.py'
+$script:freezePath = 'freeze.json'
+$script:reportTitle = 'Test Comparison'
+$script:runnerPython = 'python.exe'
+$script:serverProcess = $null
+$script:taskProcess = $null
+$script:openReportPath = $null
+$comparison = Get-ControllerHandler 'comparisonButton' 'Add_Click'
+$tick = Get-ControllerHandler 'timer' 'Add_Tick'
+$startError = $null
+try { & $comparison } catch { $startError = $_.Exception.Message }
+if ($case -eq 'start-failed') {
+    Assert-That ($startError -eq 'Runner is missing') 'Start failure was swallowed'
+    Assert-That ($null -eq $script:openReportPath -and $null -eq $script:taskProcess) 'Report path recorded before the process started'
+    & $tick
+    Assert-That ($script:opened.Count -eq 0) 'Failed start opened a report'
+}
+else {
+    Assert-That ($null -eq $startError -and $script:started.Count -eq 1 -and $script:started[0].Tag -eq 'comparison-report') 'Comparison process was not started'
+    Assert-That ($script:openReportPath -like (Join-Path $script:artifactRoot 'comparison-report-*.md')) 'Report path was not recorded after start'
+    $reportPath = $script:openReportPath
+    & $tick
+    Assert-That ($script:opened.Count -eq 0 -and $script:openReportPath -eq $reportPath -and $null -ne $script:taskProcess) 'Running report was opened or cleared early'
+    $exitCode = switch ($case) { 'exit-3' { 3 } 'exit-null' { $null } default { 0 } }
+    $script:taskProcess.HasExited = $true
+    $script:taskProcess.ExitCode = $exitCode
+    if ($case -ne 'exit-0-missing-file') { [System.IO.File]::WriteAllText($reportPath, '# report') }
+    & $tick
+    Assert-That ($null -eq $script:taskProcess -and $null -eq $script:openReportPath) 'Finished report task was not cleared'
+    if ($case -eq 'exit-0') {
+        Assert-That ($script:opened.Count -eq 1 -and $script:opened[0] -eq $reportPath) 'Successful report was not opened'
+        Assert-That (-not (($script:logs -join ' ').Contains('generation failed'))) 'Success logged as failure'
+    }
+    else {
+        Assert-That ($script:opened.Count -eq 0) 'Failed report generation opened a report'
+        $expected = switch ($case) { 'exit-3' { '*generation failed (exit 3)*' } 'exit-null' { '*generation failed (exit )*' } default { '*generation failed (exit 0)*' } }
+        Assert-That (($script:logs -join ' ') -like $expected) 'Failure exit code was not logged'
+    }
+    & $tick
+    Assert-That ($script:opened.Count -eq [int]($case -eq 'exit-0')) 'Report opened again on a later tick'
+}
+'''.replace('__CASE__', case))
+
+
+@pytest.mark.parametrize("model_id", ["qwen3.8-27b-ov", "OpenVINO/Qwen3-8B-int8-ov", "qwen3-coder-30b-a3b-ov", "qwen38-fable5-int4"])
+def test_controller_local_launcher_wrappers_clear_api_key(tmp_path, model_id):
+    run_controller_powershell(tmp_path, r'''
+function Test-Port8000 { $false }
+function Start-TrackedProcess($FileName, $Arguments, $WorkingDirectory, $Tag) { [pscustomobject]@{ Id = 1; HasExited = $false } }
+$script:workspaceRoot = $env:CONTROLLER_TEST_TEMP
+$script:modelRoot = Join-Path $script:workspaceRoot 'models'
+$script:ovmsRoot = Join-Path $script:workspaceRoot 'ovms'
+$script:logRoot = Join-Path $script:workspaceRoot 'logs'
+foreach ($directory in @($script:modelRoot, $script:ovmsRoot, $script:logRoot)) {
+    New-Item -ItemType Directory -Path $directory | Out-Null
+}
+foreach ($relative in @('start-27b-article.cmd', 'start-qwen3-coder-30b.cmd', 'start-qwen38-fable5-coding-27b.cmd', 'morteza89-qwen3.8-27b-int4-ov\openvino_language_model.xml', 'qwen3-coder-30b-a3b-int4-ov\openvino_model.xml', 'qwen3.8-27b-fable-5-coding-distilled-int4-ov\openvino_language_model.xml', 'qwen3-8b-int8\openvino_model.xml')) {
+    $path = Join-Path $script:modelRoot $relative
+    New-Item -ItemType Directory -Force -Path (Split-Path $path) | Out-Null
+    [System.IO.File]::WriteAllText($path, 'test-only sentinel; never execute')
+}
+foreach ($relative in @('setupvars.bat', 'ovms.exe')) {
+    [System.IO.File]::WriteAllText((Join-Path $script:ovmsRoot $relative), 'test-only sentinel; never execute')
+}
+. ([scriptblock]::Create((Import-ControllerFunction 'Start-LocalServer')))
+$script:serverProcess = $null
+$script:serverReady = $false
+$script:warmupReady = $false
+Start-LocalServer ([pscustomobject]@{ Name = 'test local'; Profile = [pscustomobject]@{ provider = 'local'; model = '__MODEL_ID__' } })
+$lines = @([System.IO.File]::ReadAllLines((Join-Path $script:logRoot 'start-local-model.cmd')))
+Assert-That ($lines[0] -ceq '@echo off') 'Wrapper does not start with @echo off'
+$clears = @($lines | Where-Object { $_ -ceq 'set "API_KEY="' })
+Assert-That ($clears.Count -eq 1) 'Wrapper does not clear API_KEY exactly once'
+$launch = @($lines | Where-Object { $_ -match '^(call |")' })
+Assert-That ($launch.Count -ge 1 -and $lines.IndexOf($clears[0]) -lt $lines.IndexOf($launch[0])) 'API_KEY is not cleared before the launcher runs'
+'''.replace('__MODEL_ID__', model_id))
+
+
 @pytest.mark.parametrize("workflow", ["dependency-migration", "security-repair", "regression-tests"])
 def test_qwen3_coder_profile_uses_local_route_and_existing_budget(workflow):
     from worker import request_options
@@ -582,8 +861,10 @@ def test_regression_frozen_bytes_survive_clean_git_checkout(tmp_path, monkeypatc
         "engine/bench.py", "engine/worker.py", "engine/requirements-runner.lock",
     }
     freeze = regression / "artifacts" / bench.load(regression / "workflow.json")["default_freeze"]
+    # Engine edits stale the shared-engine entries until a new freeze is created; package bytes stay frozen.
+    package_only = lambda hashes: {name: value for name, value in hashes.items() if not name.startswith("engine/")}
     if freeze.is_file():
-        assert original == bench.load(freeze)["hashes"]
+        assert package_only(original) == package_only(bench.load(freeze)["hashes"])
 
     repository = tmp_path / "repository"
     repository.mkdir()
@@ -622,7 +903,7 @@ def test_regression_frozen_bytes_survive_clean_git_checkout(tmp_path, monkeypatc
     monkeypatch.setattr(bench, "ENGINE_ROOT", checkout / "dependency-migration")
     assert bench.package_hashes() == original
     if freeze.is_file():
-        assert reconstructed == bench.load(freeze)["hashes"]
+        assert package_only(reconstructed) == package_only(bench.load(freeze)["hashes"])
 
 
 @pytest.mark.parametrize("function_name", ["prepend_scheme_if_needed", "get_auth_from_url", "urldefragauth"])
@@ -687,11 +968,38 @@ def test_comparison_report_preserves_partial_fault_credit(tmp_path):
 ])
 def test_fault_detection_requires_assertion_failure(tmp_path, outcome, exit_code, expected):
     report = tmp_path / "report.xml"
-    report.write_text(f'<testsuites><testsuite><testcase name="test_url" classname="tests.test_generated">{outcome}</testcase></testsuite></testsuites>', encoding="utf-8")
-    baseline = {"cases": [{"name": "test_url", "classname": "tests.test_generated"}]}
-    assert bench.fault_detected(report, exit_code, baseline) is expected
+    report.write_text(f'<testsuites><testsuite><testcase name="test_url[a-b]" classname="tests.test_generated">{outcome}</testcase></testsuite></testsuites>', encoding="utf-8")
+    baseline = {"cases": [{"name": "test_url[a-b]", "classname": "tests.test_generated"}]}
+    assert bench.fault_detected(report, exit_code, baseline, {"test_url"}) is expected
+    assert not bench.fault_detected(report, exit_code, baseline, {"test_other"})
+    assert not bench.fault_detected(report, exit_code, baseline, set())
     baseline["cases"][0]["name"] = "test_other"
-    assert not bench.fault_detected(report, exit_code, baseline)
+    assert not bench.fault_detected(report, exit_code, baseline, {"test_url"})
+
+
+def test_fault_credit_requires_behavioral_failing_test(tmp_path):
+    report = tmp_path / "report.xml"
+    report.write_text(
+        '<testsuites><testsuite>'
+        '<testcase name="test_hash[x]" classname="tests.test_generated"><failure message="assert digest == expected"/></testcase>'
+        '<testcase name="test_cleanup[y]" classname="tests.test_generated"/>'
+        '</testsuite></testsuites>', encoding="utf-8")
+    baseline = {"cases": [{"name": "test_hash[x]", "classname": "tests.test_generated"}, {"name": "test_cleanup[y]", "classname": "tests.test_generated"}]}
+    assert not bench.fault_detected(report, 1, baseline, {"test_cleanup"})
+    assert bench.fault_detected(report, 1, baseline, {"test_hash"})
+
+
+@pytest.mark.parametrize("source,expected", [
+    ("def test_cleanup():\n    assert urldefragauth('u') == 'v'\n", {"test_cleanup"}),
+    ("def test_cleanup():\n    assert 'v' == utils.urldefragauth('u')\n", {"test_cleanup"}),
+    ("class TestUrl(unittest.TestCase):\n    def test_auth(self):\n        self.assertEqual(get_auth_from_url('u'), ('a', 'b'))\n", {"test_auth"}),
+    ("def test_hash():\n    assert hashlib.sha256(source).hexdigest() == 'abc'\n", set()),
+    ("def test_identity():\n    assert urldefragauth is not None\n", set()),
+    ("def test_ordering():\n    assert urldefragauth('u') != 'v'\n", set()),
+    ("def check():\n    assert urldefragauth('u') == 'v'\n\ndef test_cleanup():\n    check()\n", set()),
+])
+def test_behavioral_test_names(source, expected):
+    assert bench.behavioral_test_names(ast.parse(source)) == expected
 
 
 @pytest.mark.parametrize("existing", [False, True])
@@ -809,8 +1117,8 @@ def test_openai_responses_request_uses_fixed_model_and_shared_budget():
     assert openai_finish_reason(SimpleNamespace(status="incomplete", incomplete_details=SimpleNamespace(reason="max_output_tokens"))) == "length"
 
 
-def test_openai_multiple_action_blocks_execute_only_first():
-    from worker import normalize_openai_action
+def test_multiple_action_blocks_execute_only_first():
+    from worker import normalize_action
 
     response = """```mswea_bash_command
 printf 'first'
@@ -818,18 +1126,85 @@ printf 'first'
 ```mswea_bash_command
 printf 'second'
 ```"""
-    normalized, count = normalize_openai_action(response)
+    normalized, count = normalize_action(response)
     assert count == 2
     assert normalized == "```mswea_bash_command\nprintf 'first'\n```"
     assert "second" not in normalized
 
 
-def test_openai_action_normalization_leaves_single_and_nonaction_text_unchanged():
-    from worker import normalize_openai_action
+def test_action_normalization_leaves_single_and_nonaction_text_unchanged():
+    from worker import normalize_action
 
     single = "```mswea_bash_command\nprintf 'one'\n```"
-    assert normalize_openai_action(single) == (single, 1)
-    assert normalize_openai_action("no action") == ("no action", 0)
+    assert normalize_action(single) == (single, 1)
+    assert normalize_action("no action") == ("no action", 0)
+
+
+def test_request_settings_disclose_provider_parameters():
+    from worker import request_settings
+
+    policy = bench.load(bench.ROOT / "policy.json")
+    local = request_settings(bench.load(bench.ROOT / "profiles/qwen38-fable5-coding-27b.json"), policy)
+    assert local == {"provider": "local", "model": "qwen38-fable5-int4", "max_output_tokens": 2048, "temperature": 0, "sampling": "greedy", "reasoning": "disabled", "output_cap_includes_reasoning_tokens": False, "retries": 0, "api": "chat.completions"}
+    thinking = request_settings({"provider": "local", "model": "m", "extra_body": {}}, dict(policy, temperature=0.7))
+    assert thinking["reasoning"] == "model_default"
+    assert thinking["sampling"] == "temperature"
+    openai = request_settings(bench.load(bench.ROOT / "profiles/openai.json"), policy)
+    assert openai == {"provider": "openai", "model": "gpt-6.1-sol", "max_output_tokens": 2048, "temperature": None, "sampling": "provider_default", "reasoning": "effort=medium", "output_cap_includes_reasoning_tokens": True, "retries": 0, "api": "responses"}
+    anthropic = request_settings(bench.load(bench.ROOT / "profiles/claude.json"), policy)
+    assert (anthropic["reasoning"], anthropic["api"], anthropic["temperature"], anthropic["output_cap_includes_reasoning_tokens"]) == ("model_default", "messages", 0, False)
+    json.dumps([local, openai, anthropic, request_settings({"provider": "mock", "model": "offline-mock"}, policy)])
+
+
+@pytest.mark.parametrize("provider", ["local", "openai"])
+def test_worker_normalizes_multi_block_actions_for_every_provider(tmp_path, monkeypatch, provider):
+    from types import SimpleNamespace
+    import openai
+    from worker import run_worker
+
+    policy = bench.load(bench.ROOT / "policy.json")
+    profile = bench.load(bench.ROOT / "profiles" / ("openai.json" if provider == "openai" else "local-8b.json"))
+    monkeypatch.setenv("OPENAI_API_KEY", "test-only-not-a-credential")
+    monkeypatch.setenv("OPENAI_BASE_URL", "http://169.254.0.1/hijacked")
+    for key in ("MSWEA_GLOBAL_CONFIG_DIR", "MSWEA_SILENT_STARTUP", "MSWEA_MODEL_RETRY_STOP_AFTER_ATTEMPT"):
+        monkeypatch.setenv(key, "")
+    replies = iter(["```mswea_bash_command\nprintf 'first'\n```\n```mswea_bash_command\nprintf 'second'\n```", "```mswea_bash_command\nprintf 'COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT\\n'\n```"])
+    clients = []
+
+    class FakeOpenAI:
+        def __init__(self, **kwargs):
+            clients.append(kwargs)
+            model = profile["expected_returned_model"]
+            chat_response = lambda **options: SimpleNamespace(model=model, usage=None, id="chat", choices=[SimpleNamespace(message=SimpleNamespace(content=next(replies)), finish_reason="stop")])
+            responses_response = lambda **options: SimpleNamespace(model=model, usage=None, id="resp", status="completed", output_text=next(replies))
+            self.chat = SimpleNamespace(completions=SimpleNamespace(create=chat_response))
+            self.responses = SimpleNamespace(create=responses_response)
+
+        def close(self):
+            pass
+
+    def fake_run(command, **kwargs):
+        stdout = "COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT\n" if "COMPLETE_TASK" in command[-1] else "done\n"
+        return subprocess.CompletedProcess(command, 0, stdout, "")
+
+    monkeypatch.setattr(openai, "OpenAI", FakeOpenAI)
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    prepared = tmp_path / "prepared"
+    prepared.mkdir()
+    (prepared / "TASK.md").write_text("task", encoding="utf-8")
+    (tmp_path / "output").mkdir()
+    sent = []
+    connection = SimpleNamespace(send=sent.append, recv=lambda: "start", close=lambda: None)
+    run_worker(connection, profile, policy, "sha256:test", "migration-agent-test", str(prepared), str(tmp_path / "output"))
+    assert sent[-1]["kind"] == "finished" and sent[-1]["result"]["exit_status"] == "Submitted"
+    assert clients[0]["base_url"] == profile["base_url"]
+    events = [json.loads(line) for line in (tmp_path / "output/events.jsonl").read_text(encoding="utf-8").splitlines()]
+    responses = [event for event in events if event["kind"] == "request_end"]
+    assert responses[0]["content"].count("mswea_bash_command") == 2
+    assert responses[0]["normalized_action_blocks"] == 2
+    assert responses[0]["agent_content"] == "```mswea_bash_command\nprintf 'first'\n```"
+    assert "normalized_action_blocks" not in responses[1]
+    assert [event["command"] for event in events if event["kind"] == "tool_start"][0] == "printf 'first'"
 
 
 def test_provider_error_diagnostics_keep_status_and_redact_key():
@@ -913,6 +1288,9 @@ def test_junit_summary_retains_named_partial_results(tmp_path):
     ("class TestContract:\n    def test_response(self):\n        self.assertEqual(actual, expected)", True),
     ("def helper():\n    assert response.status_code == 201", False),
     ("def test_placeholder():\n    assert True", False),
+    ("def test_placeholder():\n    assert 1 == 1", False),
+    ("def test_placeholder():\n    assert 'a' != 'b' and 2 > 1", True),
+    ("def test_value():\n    assert total == 1", True),
     ("def test_placeholder():\n    pass", False),
 ])
 def test_generated_test_assertion_detection(source, expected):
@@ -932,29 +1310,86 @@ def test_truncated_model_response_is_explained_to_agent():
     assert "truncated at the output limit" in error.value.messages[0]["content"]
 
 
+@pytest.mark.parametrize("contract_passes", [True, False])
 @pytest.mark.parametrize("source,issue", [("", "missing_regression_assertions"), ("def broken(", "invalid_test_source"), (None, "missing_test_file")])
-def test_verification_evaluates_contract_despite_missing_or_broken_tests(tmp_path, monkeypatch, source, issue):
+def test_verification_evaluates_contract_despite_missing_or_broken_tests(tmp_path, monkeypatch, source, issue, contract_passes):
     submission = tmp_path / "submission"
     (submission / "tests").mkdir(parents=True)
     if source is not None:
         (submission / "tests/test_generated.py").write_text(source, encoding="utf-8")
     phases = []
+    containers = {}
 
     def fake_docker(*arguments, **kwargs):
+        if arguments[0] == "run":
+            containers[arguments[arguments.index("--name") + 1]] = "contract" if any("dst=/grader," in str(argument) for argument in arguments) else "generated"
+            return subprocess.CompletedProcess(arguments, 0, "", "")
+        phase = containers.get(arguments[1])
         if "pytest" in arguments:
-            phases.append("contract" if "/grader/test_contract.py" in arguments else "generated")
-        text = '<testsuites><testsuite><testcase name="health"/><testcase name="receipt"><failure/></testcase></testsuite></testsuites>'
+            phases.append(phase)
+            assert arguments[2:5] == ("python", "-m", "pytest") and arguments[5:7] == ("-W", "error::pydantic.PydanticDeprecatedSince20")
+        failed = '<testcase name="receipt"><failure/></testcase>' if phase == "generated" or not contract_passes else '<testcase name="receipt"/>'
+        text = f'<testsuites><testsuite><testcase name="health"/>{failed}</testsuite></testsuites>'
         return subprocess.CompletedProcess(arguments, 0, text, "")
 
     monkeypatch.setattr(bench, "docker", fake_docker)
     result = bench.verify(submission, tmp_path, "image", {"container_cpus": 2, "container_memory": "2g", "verifier_timeout_seconds": 60})
     assert phases == (["contract"] if source is None else ["contract", "generated"])
     assert not result["accepted"]
-    assert result["category"] == issue
-    assert result["test_results"]["contract"]["passed"] == 1
-    assert result["test_results"]["contract"]["failed"] == 1
+    assert result["regression_issue"] == issue
+    # A failing contract phase outranks the generated-test issue in the reported category.
+    assert result["category"] == (issue if contract_passes else "verification_failed")
+    assert result["checks"]["contract"] is contract_passes
+    assert result["test_results"]["contract"]["passed"] == (2 if contract_passes else 1)
     if source is None:
         assert result["phase_errors"]["generated"] == "MissingGeneratedTestFile"
+
+
+@pytest.mark.parametrize("message,expected", [
+    ("assert decode(token) is None", True),
+    ("AssertionError: vulnerable baseline accepted the token", True),
+    ("Failed: DID NOT RAISE InvalidKeyError", True),
+    ("TypeError: Expected an Ed25519 key", True),
+    ("ImportError: cannot import name 'helper'", False),
+    ("ModuleNotFoundError: No module named 'jwt.helpers'", False),
+    ("AttributeError: module has no attribute", False),
+    ("NameError: name 'is_pem_format' is not defined", False),
+])
+def test_negative_control_requires_behavioral_failure(tmp_path, monkeypatch, message, expected):
+    root = tmp_path / "workflow"
+    starter = root / "starter"
+    (starter / "tests").mkdir(parents=True)
+    (root / "grader").mkdir()
+    (starter / "tests/test_generated.py").write_text("", encoding="utf-8")
+    (starter / "jwt.py").write_text("def decode(token):\n    return token\n", encoding="utf-8")
+    workflow = {"allowed_files": ["jwt.py", "tests/test_generated.py"], "preserve_baseline_files": True, "generated_test_path": "tests/test_generated.py", "contract_tests": ["test_security.py"], "require_generated_test_to_fail_on_baseline": True, "pydantic_warnings_as_errors": False}
+    monkeypatch.setattr(bench, "ROOT", root)
+    monkeypatch.setattr(bench, "WORKFLOW", workflow)
+    monkeypatch.setattr(bench, "ALLOWED", workflow["allowed_files"])
+    submission = tmp_path / "submission"
+    shutil.copytree(starter, submission)
+    (submission / "tests/test_generated.py").write_text("from jwt import decode\n\ndef test_fix():\n    assert decode('t') is None\n", encoding="utf-8")
+    containers = {}
+
+    def fake_docker(*arguments, **kwargs):
+        if arguments[0] == "run":
+            mounts = [arguments[index + 1] for index, argument in enumerate(arguments) if argument == "--mount"]
+            phase = "negative_control" if any("negative-control" in mount for mount in mounts) else "contract" if any("dst=/grader," in mount for mount in mounts) else "generated"
+            containers[arguments[arguments.index("--name") + 1]] = phase
+            return subprocess.CompletedProcess(arguments, 0, "", "")
+        if arguments[0] != "exec":
+            return subprocess.CompletedProcess(arguments, 0, "", "")
+        phase = containers[arguments[1]]
+        if "pytest" in arguments:
+            return subprocess.CompletedProcess(arguments, 1 if phase == "negative_control" else 0, "", "")
+        outcome = f'<failure message="{message}"/>' if phase == "negative_control" else ""
+        return subprocess.CompletedProcess(arguments, 0, f'<testsuites><testsuite><testcase name="test_fix">{outcome}</testcase></testsuite></testsuites>', "")
+
+    monkeypatch.setattr(bench, "docker", fake_docker)
+    result = bench.verify(submission, tmp_path / "output", "image", {"container_cpus": 2, "container_memory": "2g", "verifier_timeout_seconds": 60})
+    assert sorted(containers.values()) == ["contract", "generated", "negative_control"]
+    assert result["checks"]["negative_control"] is expected
+    assert result["accepted"] is expected
 
 
 @pytest.fixture
@@ -963,7 +1398,7 @@ def configured_regression_verifier(tmp_path, monkeypatch):
     starter = root / "starter"
     (starter / "tests").mkdir(parents=True)
     (root / "grader").mkdir()
-    production = "def value():\n    return 2 + 3\n"
+    production = "def urldefragauth(url):\n    return 2 + 3\n"
     generated_path = "tests/test_generated.py"
     (starter / "production.py").write_text(production, encoding="utf-8")
     (starter / generated_path).write_text("", encoding="utf-8")
@@ -984,9 +1419,10 @@ def configured_regression_verifier(tmp_path, monkeypatch):
     monkeypatch.setattr(bench, "ALLOWED", workflow["allowed_files"])
     submission = tmp_path / "submission"
     shutil.copytree(starter, submission)
-    source = "from production import value\n\ndef check_value():\n    assert value() == 5\n\ndef test_value():\n    check_value()\n"
+    # Fault credit (R1) needs the equality assertion inside the test function itself; helpers may still raise.
+    source = "from production import urldefragauth\n\ndef fail_helper(message):\n    raise AssertionError(message)\n\ndef test_value():\n    if urldefragauth('u') is None:\n        fail_helper('missing')\n    assert urldefragauth('u') == 5\n"
     (submission / generated_path).write_text(source, encoding="utf-8")
-    (submission / "production.py").write_text("def value():\n    return 999\n", encoding="utf-8")
+    (submission / "production.py").write_text("def urldefragauth(url):\n    return 999\n", encoding="utf-8")
     (submission / "submission_only.py").write_text("tampered = True\n", encoding="utf-8")
     output = tmp_path / "output"
     output.mkdir()
@@ -994,6 +1430,7 @@ def configured_regression_verifier(tmp_path, monkeypatch):
     executed = []
     cleaned = []
     outcomes = {}
+    case_name = "test_value[u]"
     snapshot = {path.relative_to(starter): path.read_bytes() for path in starter.rglob("*") if path.is_file()}
 
     def fake_docker(*arguments, **kwargs):
@@ -1022,7 +1459,12 @@ def configured_regression_verifier(tmp_path, monkeypatch):
             outcome = outcomes.get(phase, "failure" if phase.startswith("fault_") else "pass")
             if "pytest" in arguments:
                 executed.append(phase)
-                tests = arguments[arguments.index("pytest") + 1:arguments.index("-q")]
+                assert arguments[2:5] == ("python", "-m", "pytest")
+                warning_index = arguments.index("-W") if "-W" in arguments else None
+                assert (warning_index is not None) is bool(workflow["pydantic_warnings_as_errors"])
+                if warning_index is not None:
+                    assert warning_index > arguments.index("pytest") and arguments[warning_index + 1] == "error::pydantic.PydanticDeprecatedSince20"
+                tests = arguments[(warning_index + 2) if warning_index is not None else arguments.index("pytest") + 1:arguments.index("-q")]
                 assert tests == (("/grader/test_witnesses.py",) if phase == "contract" else ("/task/" + generated_path,))
                 assert kwargs == {"timeout": 17, "check": False}
                 if outcome == "timeout":
@@ -1031,12 +1473,12 @@ def configured_regression_verifier(tmp_path, monkeypatch):
             assert arguments[2:] == ("cat", "/tmp/report.xml")
             tags = {
                 "pass": "",
-                "failure": '<failure message="assert value() == 5"/>',
+                "failure": '<failure message="assert urldefragauth(&apos;u&apos;) == 5"/>',
                 "skip": "<skipped/>",
                 "explicit_failure": '<failure message="Failed: explicit pytest.fail"/>',
                 "error": '<error message="ImportError"/>',
             }
-            xml = "<malformed" if outcome == "malformed" else f'<testsuites><testsuite><testcase classname="tests.test_generated" name="test_value">{tags[outcome]}</testcase></testsuite></testsuites>'
+            xml = "<malformed" if outcome == "malformed" else f'<testsuites><testsuite><testcase classname="tests.test_generated" name="{case_name}">{tags[outcome]}</testcase></testsuite></testsuites>'
             return subprocess.CompletedProcess(arguments, 0, xml, "")
         else:
             assert arguments[0] == "rm"
@@ -1054,7 +1496,7 @@ def configured_regression_verifier(tmp_path, monkeypatch):
     return submission / generated_path, outcomes, executed, verify
 
 
-def test_configured_regression_verify_isolates_faults_and_accepts_helper_assertion(configured_regression_verifier):
+def test_configured_regression_verify_isolates_faults_and_allows_helper_raise(configured_regression_verifier):
     generated, outcomes, executed, verify = configured_regression_verifier
     result = verify()
     assert executed == ["contract", "generated", "fault_first", "fault_second"]
@@ -1070,11 +1512,52 @@ def test_configured_regression_verify_isolates_faults_and_accepts_helper_asserti
     assert result["cleanup_errors"] == []
 
 
+def test_configured_regression_verify_accepts_unittest_assert_methods(configured_regression_verifier):
+    generated, outcomes, executed, verify = configured_regression_verifier
+    generated.write_text("import unittest\nfrom production import urldefragauth\n\nclass TestValue(unittest.TestCase):\n    def test_value(self):\n        self.assertEqual(urldefragauth('u'), 5)\n", encoding="utf-8")
+    result = verify()
+    assert result["accepted"]
+    assert result["regression_issue"] is None
+    assert result["faults_detected"] == 2
+
+
+def test_configured_regression_verify_denies_fault_credit_without_behavioral_failure(configured_regression_verifier):
+    generated, outcomes, executed, verify = configured_regression_verifier
+    generated.write_text("from production import urldefragauth\n\ndef test_value():\n    assert isinstance(urldefragauth('u'), int)\n", encoding="utf-8")
+    result = verify()
+    assert executed == ["contract", "generated", "fault_first", "fault_second"]
+    assert not result["accepted"]
+    assert result["regression_issue"] is None
+    assert result["category"] == "verification_failed"
+    assert result["checks"]["generated"]
+    assert result["faults_detected"] == 0
+
+
+def test_verifier_passes_pydantic_warning_filter_to_pytest(configured_regression_verifier):
+    generated, outcomes, executed, verify = configured_regression_verifier
+    bench.WORKFLOW["pydantic_warnings_as_errors"] = True
+    result = verify()
+    assert executed == ["contract", "generated", "fault_first", "fault_second"]
+    assert result["accepted"]
+
+
 @pytest.mark.parametrize("source,issue", [
     (None, "missing_test_file"),
     ("def broken(", "invalid_test_source"),
     ("def test_empty():\n    pass\n", "missing_regression_assertions"),
-    ("def test_value():\n    assert value() == 5\n    raise AssertionError('artificial')\n", "artificial_test_exception"),
+    ("def test_trivial():\n    assert 1 == 1\n", "missing_regression_assertions"),
+    ("def check_value():\n    assert urldefragauth('u') == 5\n\ndef test_value():\n    check_value()\n", "missing_regression_assertions"),
+    ("def test_value():\n    assert urldefragauth('u') == 5\n    raise AssertionError('artificial')\n", "artificial_test_exception"),
+    ("import pytest\n\n@pytest.mark.xfail\ndef test_value():\n    assert urldefragauth('u') == 5\n", "xfail_marker_not_permitted"),
+    ("from pytest import xfail\n\n@xfail\ndef test_value():\n    assert urldefragauth('u') == 5\n", "xfail_marker_not_permitted"),
+    ("import inspect\n\ndef test_value():\n    assert 'rsplit' in inspect.getsource(urldefragauth)\n", "source_introspection"),
+    ("def test_value():\n    assert open('production.py').read() != ''\n", "source_introspection"),
+    ("import sys\n\ndef test_value():\n    assert sys.modules['production'].urldefragauth('u') == 5\n", "source_introspection"),
+    ("def test_value():\n    assert urldefragauth.__code__.co_consts\n", "source_introspection"),
+    ("from pathlib import Path\n\ndef test_value():\n    assert Path('production.py').read_text() != ''\n", "source_introspection"),
+    ("import hashlib\n\ndef test_value():\n    assert hashlib.sha256(b'x').hexdigest() == 'y'\n", "source_introspection"),
+    ("def test_value():\n    assert eval('urldefragauth(\"u\")') == 5\n", "source_introspection"),
+    ("import importlib\n\ndef test_value():\n    assert importlib.import_module('production').urldefragauth('u') == 5\n", "source_introspection"),
 ])
 def test_configured_regression_verify_rejects_invalid_generated_source(configured_regression_verifier, source, issue):
     generated, outcomes, executed, verify = configured_regression_verifier
@@ -1135,10 +1618,20 @@ def test_cloud_fee_counts_cache_categories_and_incomplete_calls():
     usage = {"input_tokens": 100, "output_tokens": 20, "cache_read_input_tokens": 50, "cache_creation_input_tokens": 30, "cache_creation": {"ephemeral_5m_input_tokens": 20, "ephemeral_1h_input_tokens": 10}}
     events = [{"kind": "request_start"}, {"kind": "request_end", "usage": usage}]
     assert bench.api_fee(profile, events) == pytest.approx(0.00075)
-    assert bench.api_fee(profile, events + [{"kind": "request_start"}]) is None
+    # A request still in flight at cutoff has no usage, so completed fees are still summed.
+    assert bench.api_fee(profile, events + [{"kind": "request_start"}]) == pytest.approx(0.00075)
+    assert bench.api_fee(profile, events + [{"kind": "request_start"}, {"kind": "request_end", "usage": None}]) is None
     usage["cache_creation_input_tokens"] = 40
     assert bench.api_fee(profile, events) is None
     assert bench.api_fee({"provider": "local"}, []) == 0
+
+
+def test_openai_fee_sums_completed_requests_when_one_is_in_flight():
+    profile = bench.load(bench.ROOT / "profiles/openai.json")
+    completed = {"kind": "request_end", "usage": {"input_tokens": 1000, "output_tokens": 20, "input_tokens_details": {"cached_tokens": 100, "cache_write_tokens": 400}}}
+    events = [{"kind": "request_start"}, completed, {"kind": "request_start"}]
+    assert bench.api_fee(profile, events) == pytest.approx(0.00221)
+    assert bench.api_fee(profile, events + [{"kind": "request_end", "usage": {"input_tokens": 5}}]) is None
 
 
 def test_cleanup_errors_are_recordable(monkeypatch):
@@ -1152,11 +1645,13 @@ def test_cleanup_errors_are_recordable(monkeypatch):
 def test_no_success_has_undefined_cost_per_acceptance(tmp_path):
     output = tmp_path / "attempt-one"
     output.mkdir()
-    bench.save(output / "result.json", {"task_hash": "task", "profile_hash": "profile", "label": "test", "scored": True, "mock": False, "accepted": False, "api_fee_usd": 0, "category": "deadline"})
+    settings = {"provider": "local", "model": "m", "max_output_tokens": 2048, "temperature": 0, "sampling": "greedy", "reasoning": "disabled", "output_cap_includes_reasoning_tokens": False, "retries": 0, "api": "chat.completions"}
+    bench.save(output / "result.json", {"task_hash": "task", "profile_hash": "profile", "label": "test", "scored": True, "mock": False, "accepted": False, "api_fee_usd": 0, "category": "deadline", "request_settings": settings})
     row = bench.report(tmp_path)[0]
     assert row["attempts"] == 1
     assert row["api_fee_per_accepted_usd"] is None
     assert row["accepted_within_budget"] is None
+    assert row["request_settings"] == settings
 
 
 def test_saved_profiles_and_agent_frontmatter():
@@ -1225,6 +1720,7 @@ def test_supervisor_stops_worker_before_verification_and_retains_cleanup_error(t
     policy["deadline_seconds"] = None if unlimited else 600
     bench.save(tmp_path / "policy.json", policy)
     monkeypatch.setattr(bench, "ROOT", tmp_path)
+    monkeypatch.setattr(bench, "ENGINE_ROOT", tmp_path)
     monkeypatch.setattr(bench, "image_id", lambda image: "sha256:test")
     monkeypatch.setattr(bench, "runner_fingerprint", lambda: {"python": "test"})
     monkeypatch.setattr(bench, "package_hashes", lambda: {})
@@ -1297,7 +1793,13 @@ def test_supervisor_stops_worker_before_verification_and_retains_cleanup_error(t
     assert actions[:3] == ["pause", "terminate", "verify"]
     assert result["cleanup_error"] == "TimeoutExpired"
     assert result["accepted"]
-    assert result["accepted_within_budget"]
+    # Budget credit needs a real submission; deadline and error stops are evaluated but not "within budget".
+    assert result["accepted_within_budget"] is (not deadline and not worker_error)
+    assert result["request_settings"]["provider"] == "local"
+    assert result["request_settings"]["api"] == "chat.completions"
+    assert result["api_fee_incomplete"] is False
+    assert "snapshot" not in result
+    assert not (tmp_path / "artifacts" / "active-run.json").exists()
     assert result_code == 0
     if deadline:
         assert result["exit_status"] == "deadline"
@@ -1305,6 +1807,95 @@ def test_supervisor_stops_worker_before_verification_and_retains_cleanup_error(t
     if worker_error:
         assert result["exit_status"] == "error"
         assert result["accepted"]
+
+
+def test_active_run_lock_is_shared_per_pc(tmp_path, monkeypatch):
+    engine = tmp_path / "engine"
+    package = tmp_path / "package"
+    engine.mkdir()
+    package.mkdir()
+    monkeypatch.setattr(bench, "ENGINE_ROOT", engine)
+    monkeypatch.setattr(bench, "ROOT", package)
+    lock = engine / "artifacts" / "active-run.json"
+    seen = []
+    monkeypatch.setattr(bench, "_run_attempt", lambda *args: seen.append(json.loads(lock.read_text(encoding="utf-8"))) or 0)
+    assert bench.run_attempt({}, {}, False) == 0
+    assert seen[0]["pid"] == os.getpid()
+    assert not (package / "artifacts").exists()
+    assert not lock.exists()
+    lock.write_text(json.dumps({"pid": 1}), encoding="utf-8")
+    monkeypatch.setattr(bench, "ROOT", tmp_path / "other-package")
+    with pytest.raises(RuntimeError, match="per PC"):
+        bench.run_attempt({}, {}, False)
+    assert len(seen) == 1
+
+
+@pytest.mark.parametrize("mode", ["exported", "failed", "missing"])
+def test_interrupted_attempt_snapshots_partial_work_without_verification(tmp_path, monkeypatch, mode):
+    real_root = bench.ROOT
+    shutil.copytree(real_root / "starter", tmp_path / "starter")
+    shutil.copyfile(real_root / "policy.json", tmp_path / "policy.json")
+    monkeypatch.setattr(bench, "ROOT", tmp_path)
+    monkeypatch.setattr(bench, "ENGINE_ROOT", tmp_path)
+    monkeypatch.setattr(bench, "image_id", lambda image: "sha256:test")
+    monkeypatch.setattr(bench, "runner_fingerprint", lambda: {"python": "test"})
+    monkeypatch.setattr(bench, "package_hashes", lambda: {})
+    monkeypatch.setattr(bench, "verify", lambda *args: pytest.fail("Interrupted attempts must not be verified"))
+    commands = []
+
+    class Pipe:
+        def poll(self, timeout):
+            return False
+
+        def send(self, message):
+            pass
+
+        def close(self):
+            pass
+
+    class Process:
+        pid = 1
+
+        def start(self):
+            pass
+
+        def is_alive(self):
+            return False
+
+        def join(self, timeout):
+            pass
+
+    class Context:
+        def Pipe(self):
+            return Pipe(), Pipe()
+
+        def Process(self, **kwargs):
+            return Process()
+
+    def fake_docker(*arguments, **kwargs):
+        commands.append(arguments[:2])
+        if arguments[:2] == ("container", "inspect"):
+            return subprocess.CompletedProcess(arguments, 1 if mode == "missing" else 0, "", "")
+        if arguments[0] == "cp":
+            if mode == "failed":
+                raise subprocess.TimeoutExpired("docker", 60)
+            shutil.copytree(real_root / "starter", Path(arguments[2]), dirs_exist_ok=True)
+            (Path(arguments[2]) / "app/schemas.py").write_text("partial = True\n", encoding="utf-8")
+        return subprocess.CompletedProcess(arguments, 0, "", "")
+
+    monkeypatch.setattr(bench.multiprocessing, "get_context", lambda mode: Context())
+    monkeypatch.setattr(bench, "docker", fake_docker)
+    assert bench.run_attempt({"label": "unit", "provider": "local"}, {"image": "test", "hashes": {}}, False) == 1
+    output = next((tmp_path / "artifacts").glob("attempt-*"))
+    result = bench.load(output / "result.json")
+    assert result["category"] == "RuntimeError"
+    assert not result["accepted"] and not result["accepted_within_budget"]
+    assert result["snapshot"] == {"exported": "exported", "failed": "failed:TimeoutExpired", "missing": None}[mode]
+    assert any(command[0] == "pause" for command in commands) is (mode != "missing")
+    assert (output / "submission/app/schemas.py").is_file() is (mode == "exported")
+    if mode == "exported":
+        assert (output / "submission/app/schemas.py").read_text(encoding="utf-8") == "partial = True\n"
+    assert commands[-2:] == [("rm", "-f"), ("volume", "rm")]
 
 
 def test_ten_minute_policy_and_after_work_evaluation():
@@ -1450,13 +2041,15 @@ def test_comparison_report_filters_freeze_and_summarizes_models(tmp_path):
         attempt = tmp_path / f"attempt-{name}"
         attempt.mkdir()
         bench.save(attempt / "freeze.json", frozen)
+        device = "provider-managed" if provider == "openai" else "GPU"
+        profile = {"label": name, "provider": provider, "model": model, "inference": {"device": device, "runtime": "test-runtime"}}
         bench.save(attempt / "result.json", {
             "attempt_id": attempt.name,
             "label": name,
             "provider": provider,
             "model": model,
             "task_hash": "current-task",
-            "profile_hash": f"{name}-profile",
+            "profile_hash": comparison_report.profile_hash(profile),
             "scored": False,
             "mock": False,
             "accepted": accepted,
@@ -1695,7 +2288,7 @@ function Start-TrackedProcess($executable, $arguments, $directory, $kind) {
     Assert-That ($kind -eq 'pilot') 'Unexpected child launch'
     return [pscustomobject]@{ HasExited = $false }
 }
-$benchmark = [pscustomobject]@{ HasExited = $false; Killed = $false }
+$benchmark = [pscustomobject]@{ HasExited = $true; Killed = $false }
 $benchmark | Add-Member ScriptMethod Kill { $this.Killed = $true; throw 'Must not kill benchmark' }
 $script:taskProcess = $benchmark
 $throughputStatus = [pscustomobject]@{ Text = '' }
@@ -1991,3 +2584,135 @@ exit 17
         assert Path(record["manifest"]).resolve() == manifest.resolve()
     else:
         assert not record["manifest"]
+
+
+def save_comparison_attempt(directory, name, frozen, **fields):
+    attempt = directory / f"attempt-{name}"
+    attempt.mkdir()
+    bench.save(attempt / "freeze.json", frozen)
+    result = {"attempt_id": attempt.name, "label": name, "provider": "local", "model": "local-model",
+              "task_hash": "task", "profile_hash": "profile", "scored": False, "mock": False,
+              "accepted": True, "category": "accepted", "exit_status": "Submitted"}
+    result.update(fields)
+    bench.save(attempt / "result.json", result)
+    return attempt
+
+
+def test_comparison_report_header_names_freeze_file(tmp_path):
+    frozen = {"created_at": "freeze-time"}
+    report = comparison_report.render_report(tmp_path, frozen, [], freeze_name="freeze-600s-v10.json")
+    assert "\nFreeze file: freeze-600s-v10.json\nFrozen task created: freeze-time\n" in report
+    assert "Freeze file: unknown" in comparison_report.render_report(tmp_path, frozen, [])
+    assert "Skipped malformed artifacts" not in report
+
+
+def test_comparison_report_attributes_attempts_by_profile_hash(tmp_path):
+    frozen = {"created_at": "current"}
+    profile = {"label": "local27", "provider": "local", "model": "qwen-27b", "inference": {"device": "GPU", "runtime": "ovms"}}
+    profile_path = tmp_path / "local27.json"
+    bench.save(profile_path, profile)
+    current = comparison_report.profile_hash(profile)
+    save_comparison_attempt(tmp_path, "stale", frozen, label="local27", model="qwen-27b", profile_hash="stale-profile-hash")
+    report = comparison_report.render_report(tmp_path, frozen, [profile_path])
+    assert "| local27 | local / qwen-27b | GPU; ovms | 0 | 0 | RERUN (profile changed) |" in report
+    assert "| `stale-profil` (changed) |" in report
+    save_comparison_attempt(tmp_path, "fresh", frozen, label="local27", model="qwen-27b", profile_hash=current)
+    report = comparison_report.render_report(tmp_path, frozen, [profile_path])
+    assert "| local27 | local / qwen-27b | GPU; ovms | 1 | 0 | ready |" in report
+    assert f"| `{current[:12]}` (current) |" in report
+    assert "| `stale-profil` (changed) |" in report
+    missing = comparison_report.render_report(tmp_path, frozen, [tmp_path / "absent.private.json"])
+    assert "| absent.private | not configured | not configured | 0 | 0 | PROFILE MISSING |" in missing
+
+
+def test_comparison_report_shows_local_and_reasoning_tokens(tmp_path):
+    frozen = {"created_at": "tokens"}
+    save_comparison_attempt(tmp_path, "local", frozen, created_at="1",
+                            native_usage_totals={"prompt_tokens": 1200, "completion_tokens": 300,
+                                                 "completion_tokens_details.reasoning_tokens": 120})
+    save_comparison_attempt(tmp_path, "cloud", frozen, created_at="2", provider="openai", model="gpt-6.1-sol",
+                            native_usage_totals={"input_tokens": 900, "output_tokens": 400,
+                                                 "output_tokens_details.reasoning_tokens": 256})
+    save_comparison_attempt(tmp_path, "plain", frozen, created_at="3", native_usage_totals={"prompt_tokens": 10, "completion_tokens": 5})
+    save_comparison_attempt(tmp_path, "empty", frozen, created_at="4")
+    report = comparison_report.render_report(tmp_path, frozen, [])
+    assert "| `attempt-local` | accepted | Submitted | n/a | n/a | n/a | n/a | n/a | unknown | 1200 / 300 (reasoning 120) | n/a | n/a |" in report
+    assert "| 900 / 400 (reasoning 256) | n/a | n/a |" in report
+    assert "| 10 / 5 | n/a | n/a |" in report
+    assert "| n/a / n/a | n/a | n/a |" in report
+    assert "For providers whose output cap includes reasoning tokens, output tokens/s counts reasoning tokens" in report
+
+
+def test_comparison_report_lists_request_settings_per_configured_model(tmp_path):
+    frozen = {"created_at": "settings"}
+    local_profile = {"label": "local27", "provider": "local", "model": "qwen-27b"}
+    cloud_profile = {"label": "sol", "provider": "openai", "model": "gpt-6.1-sol"}
+    unused_profile = {"label": "idle", "provider": "local", "model": "idle-model"}
+    paths = []
+    for index, profile in enumerate((local_profile, cloud_profile, unused_profile)):
+        path = tmp_path / f"profile-{index}.json"
+        bench.save(path, profile)
+        paths.append(path)
+    save_comparison_attempt(tmp_path, "local", frozen, label="local27", model="qwen-27b", request_settings={
+        "provider": "local", "model": "qwen-27b", "max_output_tokens": 4096, "temperature": 0, "sampling": "greedy",
+        "reasoning": "disabled", "output_cap_includes_reasoning_tokens": False, "retries": 0, "api": "chat.completions"})
+    save_comparison_attempt(tmp_path, "cloud", frozen, label="sol", provider="openai", model="gpt-6.1-sol", request_settings={
+        "provider": "openai", "model": "gpt-6.1-sol", "max_output_tokens": 2048, "temperature": None, "sampling": "provider_default",
+        "reasoning": "effort=medium", "output_cap_includes_reasoning_tokens": True, "retries": 0, "api": "responses"})
+    report = comparison_report.render_report(tmp_path, frozen, paths)
+    assert report.index("## Model Coverage") < report.index("## Request Settings") < report.index("## Summary")
+    assert "| Configured model | Sampling | Temperature | Reasoning | Max output tokens | Cap includes reasoning tokens | API |" in report
+    assert "| local27 | greedy | 0 | disabled | 4096 | no | chat.completions |" in report
+    assert "| sol | provider_default | n/a | effort=medium | 2048 | yes | responses |" in report
+    settings_section = report.split("## Request Settings")[1].split("## Summary")[0]
+    assert "| idle |" not in settings_section
+    assert "Local and cloud attempts are not identical in sampling/reasoning configuration; this must be considered when comparing" in report
+    assert "## Request Settings" not in comparison_report.render_report(tmp_path, frozen, [])
+
+
+def test_comparison_report_marks_incomplete_fees_as_lower_bounds(tmp_path):
+    frozen = {"created_at": "fees"}
+    save_comparison_attempt(tmp_path, "partial", frozen, label="sol", provider="openai", model="gpt-6.1-sol",
+                            created_at="1", api_fee_usd=0.25, api_fee_incomplete=True)
+    save_comparison_attempt(tmp_path, "complete", frozen, label="sol", provider="openai", model="gpt-6.1-sol",
+                            created_at="2", api_fee_usd=0.5, api_fee_incomplete=False)
+    save_comparison_attempt(tmp_path, "nofee", frozen, label="other", model="other-model", api_fee_usd=None, api_fee_incomplete=True)
+    report = comparison_report.render_report(tmp_path, frozen, [])
+    assert "| 2/2 (100%) | n/a | n/a | n/a | n/a | \u2265 $0.7500 (incomplete) |" in report
+    assert "| `attempt-partial` | accepted | Submitted | n/a | n/a | n/a | n/a | n/a | \u2265 $0.2500 (incomplete) |" in report
+    assert "| `attempt-complete` | accepted | Submitted | n/a | n/a | n/a | n/a | n/a | $0.5000 |" in report
+    assert "| `attempt-nofee` | accepted | Submitted | n/a | n/a | n/a | n/a | n/a | unknown |" in report
+    assert "| 1/1 (100%) | n/a | n/a | n/a | n/a | unknown |" in report
+
+
+def test_comparison_report_shows_budget_and_format_normalization_columns(tmp_path):
+    frozen = {"created_at": "budget"}
+    save_comparison_attempt(tmp_path, "inside", frozen, created_at="1", accepted_within_budget=True, normalized_action_response_count=2)
+    save_comparison_attempt(tmp_path, "late", frozen, created_at="2", accepted_within_budget=False, normalized_action_response_count=0)
+    save_comparison_attempt(tmp_path, "legacy", frozen, created_at="3")
+    report = comparison_report.render_report(tmp_path, frozen, [])
+    assert "| Input / output tokens | Within budget | Fmt norm. |" in report
+    assert "| `attempt-inside` | accepted | Submitted | n/a | n/a | n/a | n/a | n/a | unknown | n/a / n/a | yes | 2 |" in report
+    assert "| `attempt-late` | accepted | Submitted | n/a | n/a | n/a | n/a | n/a | unknown | n/a / n/a | no | 0 |" in report
+    assert "| `attempt-legacy` | accepted | Submitted | n/a | n/a | n/a | n/a | n/a | unknown | n/a / n/a | n/a | n/a |" in report
+    assert "Fmt norm. counts responses whose extra action blocks were discarded." in report
+
+
+def test_comparison_report_skips_malformed_artifacts(tmp_path):
+    frozen = {"created_at": "robust"}
+    save_comparison_attempt(tmp_path, "good", frozen)
+    broken = tmp_path / "attempt-broken"
+    broken.mkdir()
+    bench.save(broken / "freeze.json", frozen)
+    (broken / "result.json").write_text("{not json", encoding="utf-8")
+    bad_freeze = tmp_path / "attempt-bad-freeze"
+    bad_freeze.mkdir()
+    (bad_freeze / "freeze.json").write_text("", encoding="utf-8")
+    bench.save(bad_freeze / "result.json", {"attempt_id": bad_freeze.name, "mock": False})
+    report = comparison_report.render_report(tmp_path, frozen, [], freeze_name="freeze.json")
+    assert "Matching model attempts: 1; other saved attempts excluded: 0; matching mock attempts excluded: 0\nSkipped malformed artifacts: 2\n" in report
+    assert "`attempt-good`" in report
+    assert "attempt-broken" not in report and "attempt-bad-freeze" not in report
+    assert comparison_report.read_json(broken / "result.json", strict=False) is None
+    with pytest.raises(ValueError):
+        comparison_report.read_json(broken / "result.json")

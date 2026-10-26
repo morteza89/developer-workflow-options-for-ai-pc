@@ -3,11 +3,11 @@
 **Another laptop:** start with [Replicate on Another Windows Laptop](MODELS.md#replicate-on-another-windows-laptop) for the exact working 27B runtime/model/launcher. Return here for benchmark setup. Do not use the old restart handoff as a fresh-install guide.
 
 
-**Current policy:** [policy.json](policy.json), [starter/TASK.md](starter/TASK.md), tests and the proposal use one **600-second (10-minute)** work budget. Create and use a fresh `artifacts/freeze-600s-v9.json` for the updated shared runner. Existing freezes and attempts retain their original inputs and must not be overwritten.
+**Current policy:** [policy.json](policy.json), [starter/TASK.md](starter/TASK.md), tests and the proposal use one **600-second (10-minute)** work budget. Create and use a fresh `artifacts/freeze-600s-v11.json` for the updated shared runner and strengthened grader. Existing freezes and attempts retain their original inputs and must not be overwritten.
 
 ## What You Can Test Now
 
-This is an implemented, resettable benchmark package, **not a hardware-qualified benchmark yet**. The original v1 service and native v2 reference pass 35 identical behavior cases. The v2 reference also passes four native-API and route-boundary checks. Fourteen deliberately incorrect repairs are rejected. The official codemod runs but does not finish this task. Runner unit tests pass. See [VALIDATION.md](VALIDATION.md) for evidence and limitations.
+This is an implemented, resettable benchmark package, **not a hardware-qualified benchmark yet**. The original v1 service and native v2 reference pass 43 identical behavior cases. The v2 reference also passes four native-API and route-boundary checks. Nineteen deliberately incorrect repairs are rejected, each by its intended check, and two functionally equivalent native loading variants (`TypeAdapter` and constructor loading) are accepted. Deprecated v1-style calls such as `.dict()` now fail at runtime because the verifier and qualification both run pytest with `-W error::pydantic.PydanticDeprecatedSince20`. The official codemod runs but does not finish this task. Runner unit tests pass. See [VALIDATION.md](VALIDATION.md) for evidence and limitations.
 
 The model gets **600 seconds (10 minutes) of work**, including inference, editing, visible tests and repairs. At the deadline, earlier submission or worker exit, the parent pauses the task, stops the worker and evaluates the saved files. Evaluation runs outside the work budget and includes partial progress. Protected feedback is not returned for another repair round. There is no separate shorter success cutoff or target range; all three models receive the same budget.
 
@@ -15,12 +15,12 @@ The 8B INT8 and the article's distinct Morteza89 27B INT4 endpoints both serve r
 
 ### Current Host Checkpoint
 
-The 10-minute policy uses `artifacts/freeze-600s-v9.json`, also the CLI default. Earlier attempts and freezes, including the unbounded run, remain untouched and cannot be overwritten. The application contract, strengthened native-v2 checks and four-file allowlist are unchanged. Missing or malformed generated tests do not prevent separate application evaluation, but still prevent full acceptance.
+The 10-minute policy uses `artifacts/freeze-600s-v11.json`, also the CLI default. Earlier attempts and freezes, including the unbounded run, remain untouched and cannot be overwritten. The application contract and four-file allowlist are unchanged; the native-v2 and contract checks were strengthened (strict integral floats, integer-typed GET fields, category normalization for both categories, runtime record loading independent of the loading API). Missing or malformed generated tests do not prevent separate application evaluation, but still prevent full acceptance.
 
 The next optional local test is unscored, from this folder in clean PowerShell, with OVMS still running:
 
 ```powershell
-.\.venv-runner\Scripts\python.exe bench.py run --profile profiles\ptl-morteza89-27b.private.json --freeze artifacts\freeze-600s-v9.json
+.\.venv-runner\Scripts\python.exe bench.py run --profile profiles\ptl-morteza89-27b.private.json --freeze artifacts\freeze-600s-v11.json
 ```
 
 Keep `qualified: false` until pilot review and required host/profile measurements are complete. Do not run scored loops yet. Normally let the deadline finish the run so the snapshot gets evaluated. Ctrl+C is emergency cancellation with available artifacts/usage retained and cleanup attempted; it does not guarantee a final snapshot. Shell actions retain a 30-second timeout and verifier execution phases a 60-second timeout. Preparation, snapshot overhead, evaluation and cleanup mean the complete command can take longer than 10 minutes.
@@ -33,7 +33,7 @@ For a live Windows demo, double-click [Run-Demo.cmd](Run-Demo.cmd), or run it fr
 .\Run-Demo.cmd
 ```
 
-Select **27B local**, **8B local**, or **GPT API**. The controller can start/stop either supported local server, show server readiness and output, test the selected endpoint, run an unscored v9 pilot, refresh the grouped JSON report, and open the latest attempt. After running the models you want to compare, click **Generate comparison report** to create and open a Markdown report with model coverage, device/runtime, summary metrics, and per-attempt test, timing, usage, and cost details. It includes only attempts whose saved freeze matches the GUI's selected freeze, excludes offline/mock attempts, and flags configured models with no matching attempts. It creates private profiles from tracked templates only when private profiles are absent; review host values before scored studies.
+Select **27B local**, **8B local**, or **GPT API**. The controller can start/stop either supported local server, show server readiness and output, test the selected endpoint, run an unscored v11 pilot, refresh the grouped JSON report, and open the latest attempt. After running the models you want to compare, click **Generate comparison report** to create and open a Markdown report with model coverage, device/runtime, summary metrics, and per-attempt test, timing, usage, and cost details. It includes only attempts whose saved freeze matches the GUI's selected freeze, excludes offline/mock attempts, and flags configured models with no matching attempts. It creates private profiles from tracked templates only when private profiles are absent; review host values before scored studies.
 
 For OpenAI, select **GPT-6.1 Sol (OpenAI API)** and click **Set OpenAI API key**. Paste into the masked popup and choose **Use for this session**; the GUI keeps the key only in its process environment for the runner child. It is not displayed in logs or saved to disk. OpenAI warmups and pilots are billable; 600 seconds limits model work, not API charges. Local runs use OVMS only and do not use the API key. The controller uses Windows PowerShell 5.1 for WinForms.
 
@@ -41,8 +41,8 @@ For OpenAI, select **GPT-6.1 Sol (OpenAI API)** and click **Set OpenAI API key**
 
 ```mermaid
 flowchart LR
-    .\.venv-runner\Scripts\python.exe bench.py freeze --output artifacts\freeze-600s-v9.json
-    .\.venv-runner\Scripts\python.exe bench.py smoke --freeze artifacts\freeze-600s-v9.json
+    .\.venv-runner\Scripts\python.exe bench.py freeze --output artifacts\freeze-600s-v11.json
+    .\.venv-runner\Scripts\python.exe bench.py smoke --freeze artifacts\freeze-600s-v11.json
     C --> D[Same Mini-SWE-Agent loop]
     L[Local OVMS] --> D
     R[Fixed OpenAI API for this comparison] --> D
@@ -100,19 +100,19 @@ On another OS, use `.venv-runner/bin/python` instead of the Windows executable p
 ## 3. Freeze and Exercise the Complete Offline Harness
 
 ```powershell
-.\.venv-runner\Scripts\python.exe bench.py freeze --image migration-task:0.1 --output artifacts\freeze-600s-v9.json
-.\.venv-runner\Scripts\python.exe bench.py smoke --freeze artifacts\freeze-600s-v9.json
+.\.venv-runner\Scripts\python.exe bench.py freeze --image migration-task:0.1 --output artifacts\freeze-600s-v11.json
+.\.venv-runner\Scripts\python.exe bench.py smoke --freeze artifacts\freeze-600s-v11.json
 ```
 
-Skip freeze creation if that exact freeze already exists; never overwrite it. Expected smoke: `accepted: true`, `mock: true`, `scored: false`, early submission, 39 contract/native checks and two generated tests passing, zero model calls/fees. References are supplied only to this labeled mock, never to the real model. Smoke is not model-quality or speed evidence.
+Skip freeze creation if that exact freeze already exists; never overwrite it. Expected smoke: `accepted: true`, `mock: true`, `scored: false`, early submission, 47 contract/native checks and two generated tests passing, zero model calls/fees. References are supplied only to this labeled mock, never to the real model. Smoke is not model-quality or speed evidence.
 
-To test the actual 10-minute cutoff without any model, use `bench.py smoke --freeze artifacts\freeze-600s-v9.json --deadline-probe` with the same runner executable. This writes reference application repairs but no regression tests, then blocks the mock worker. Expected: deadline at 600 seconds, snapshot-stop overhead reported separately, 39 contract/native passes, zero generated tests, `accepted: false`, exit code 1 and clean cleanup. That rejection is the intended probe result, not a broken harness.
+To test the actual 10-minute cutoff without any model, use `bench.py smoke --freeze artifacts\freeze-600s-v11.json --deadline-probe` with the same runner executable. This writes reference application repairs but no regression tests, then blocks the mock worker. Expected: deadline at 600 seconds, snapshot-stop overhead reported separately, 47 contract/native passes, zero generated tests, `accepted: false`, exit code 1 and clean cleanup. That rejection is the intended probe result, not a broken harness.
 
-Freeze captures source, published contract, notes, reference, grader, locks, policy, runner code, and the concrete image ID. It does not overwrite an existing freeze. After a justified pre-comparison change to this 600-second package, create a fresh v9 freeze:
+Freeze captures source, published contract, notes, reference, grader, locks, policy, runner code, and the concrete image ID. It does not overwrite an existing freeze. After a justified pre-comparison change to this 600-second package, create a fresh v11 freeze:
 
 ```powershell
-.\.venv-runner\Scripts\python.exe bench.py freeze --output artifacts\freeze-600s-v9.json
-.\.venv-runner\Scripts\python.exe bench.py smoke --freeze artifacts\freeze-600s-v9.json
+.\.venv-runner\Scripts\python.exe bench.py freeze --output artifacts\freeze-600s-v11.json
+.\.venv-runner\Scripts\python.exe bench.py smoke --freeze artifacts\freeze-600s-v11.json
 ```
 
 Supply that same `--freeze` path to later runs. Freeze creation is not proof of calibration. Re-run qualification after changing the fixture or checks.
@@ -166,7 +166,7 @@ OpenAI API invocation is an unscored pilot first, with an explicit cloud opt-in:
 The parent enforces the same 10-minute work limit for cloud, but this is not a dollar spending cap. Review provider spending controls; in-flight work may remain billable after client termination. See [MODELS.md](MODELS.md).
 
 ```powershell
-.\.venv-runner\Scripts\python.exe bench.py run --profile profiles\ptl-openai.private.json --freeze artifacts\freeze-600s-v9.json --allow-cloud
+.\.venv-runner\Scripts\python.exe bench.py run --profile profiles\ptl-openai.private.json --freeze artifacts\freeze-600s-v11.json --allow-cloud
 ```
 
 See [MODELS.md](MODELS.md#openai-api-through-the-same-agent) for Console/API key setup, profile preparation, model identity and rate-card details. VS Code Copilot Chat is not the API provider used in this measurement.

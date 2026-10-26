@@ -228,39 +228,86 @@ def junit_summary(path):
     return {"total": len(cases), **{status: sum(case["status"] == status for case in cases) for status in ("passed", "failed", "errors", "skipped")}, "cases": cases}
 
 
-def fault_detected(path, exit_code, baseline):
+def failure_messages(path):
+    return [failure.get("message", "") for case in ET.parse(path).getroot().iter("testcase") for failure in case.findall("failure")]
+
+
+def ordinary_failures(path):
+    return all(message.startswith(("assert ", "AssertionError")) for message in failure_messages(path))
+
+
+def behavioral_failures(path):
+    # Baseline regressions may surface as assertion failures or a different exception type, but not as a missing symbol.
+    return all(not message.startswith(("ImportError", "ModuleNotFoundError", "AttributeError", "NameError")) for message in failure_messages(path))
+
+
+def fault_detected(path, exit_code, baseline, behavioral_tests):
     summary = junit_summary(path)
-    failures = [failure for case in ET.parse(path).getroot().iter("testcase") for failure in case.findall("failure")]
-    ordinary = all(failure.get("message", "").startswith(("assert ", "AssertionError")) for failure in failures)
     identities = lambda result: sorted((case["classname"], case["name"]) for case in result["cases"])
-    return exit_code == 1 and summary["failed"] > 0 and not summary["errors"] and not summary["skipped"] and ordinary and identities(summary) == identities(baseline)
+    behavioral_failure = any(case["status"] == "failed" and case["name"].split("[", 1)[0] in behavioral_tests for case in summary["cases"])
+    return exit_code == 1 and summary["failed"] > 0 and not summary["errors"] and not summary["skipped"] and ordinary_failures(path) and identities(summary) == identities(baseline) and behavioral_failure
+
+
+REGRESSION_TARGETS = {"prepend_scheme_if_needed", "get_auth_from_url", "urldefragauth"}
+INTROSPECTION_NAMES = {"inspect", "getsource", "getsourcefile", "__file__", "__code__", "hashlib", "open", "read_text", "read_bytes", "importlib", "exec", "eval"}
+
+
+def node_name(node):
+    return node.id if isinstance(node, ast.Name) else node.attr if isinstance(node, ast.Attribute) else ""
+
+
+def generated_test_functions(tree):
+    return [node for node in ast.walk(tree) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name.startswith("test")]
+
+
+def behavioral_test_names(tree):
+    names = set()
+    for function in generated_test_functions(tree):
+        for node in ast.walk(function):
+            if isinstance(node, ast.Compare) and all(isinstance(operator, ast.Eq) for operator in node.ops):
+                operands = [node.left, *node.comparators]
+            elif isinstance(node, ast.Call) and node_name(node.func) == "assertEqual":
+                operands = node.args
+            else:
+                continue
+            if any(isinstance(call, ast.Call) and node_name(call.func) in REGRESSION_TARGETS for operand in operands for call in ast.walk(operand)):
+                names.add(function.name)
+                break
+    return names
 
 
 def regression_source_issue(tree):
-    targets = {"prepend_scheme_if_needed", "get_auth_from_url", "urldefragauth"}
+    test_nodes = {id(node) for function in generated_test_functions(tree) for node in ast.walk(function)}
     for node in ast.walk(tree):
-        if isinstance(node, ast.Raise):
+        if isinstance(node, ast.Raise) and id(node) in test_nodes:
             return "artificial_test_exception"
+        name = node_name(node)
+        if name == "xfail":
+            return "xfail_marker_not_permitted"
+        if name in INTROSPECTION_NAMES or (name == "modules" and isinstance(node, ast.Attribute) and node_name(node.value) == "sys"):
+            return "source_introspection"
         if isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign, ast.Delete)):
             assigned = node.targets if isinstance(node, (ast.Assign, ast.Delete)) else [node.target]
-            if any(isinstance(target, ast.Attribute) and target.attr in targets for value in assigned for target in ast.walk(value)):
+            if any(isinstance(target, ast.Attribute) and target.attr in REGRESSION_TARGETS for value in assigned for target in ast.walk(value)):
                 return "production_function_replacement"
-        if isinstance(node, ast.Call):
-            function = node.func
-            name = function.id if isinstance(function, ast.Name) else function.attr if isinstance(function, ast.Attribute) else ""
-            if name in {"setattr", "delattr", "patch", "reload"}:
-                return "production_function_replacement"
+        if isinstance(node, ast.Call) and node_name(node.func) in {"setattr", "delattr", "patch", "reload"}:
+            return "production_function_replacement"
     return None
 
 
+def trivial_assertion(node):
+    test = node.test
+    return isinstance(test, ast.Constant) or (isinstance(test, ast.Compare) and all(isinstance(operand, ast.Constant) for operand in (test.left, *test.comparators)))
+
+
 def has_test_assertion(tree):
-    for test_function in (node for node in ast.walk(tree) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name.startswith("test")):
+    for test_function in generated_test_functions(tree):
         pending = list(test_function.body)
         while pending:
             node = pending.pop()
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
                 continue
-            if isinstance(node, ast.Assert) and not isinstance(node.test, ast.Constant):
+            if isinstance(node, ast.Assert) and not trivial_assertion(node):
                 return True
             if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
                 if node.func.attr == "raises" or node.func.attr.startswith("assert"):
@@ -274,13 +321,14 @@ def verify(submission, output, image, policy):
     generated_test = WORKFLOW.get("generated_test_path", "tests/test_generated.py")
     generated_file = submission / generated_test
     regression_issue = None
+    behavioral_tests = set()
     try:
         tree = ast.parse(generated_file.read_text(encoding="utf-8"))
-        has_assertion = any(isinstance(node, ast.Assert) and not isinstance(node.test, ast.Constant) for node in ast.walk(tree)) if WORKFLOW.get("fault_variants") else has_test_assertion(tree)
-        if not has_assertion:
+        if not has_test_assertion(tree):
             regression_issue = "missing_regression_assertions"
         if WORKFLOW.get("fault_variants"):
             regression_issue = regression_source_issue(tree) or regression_issue
+            behavioral_tests = behavioral_test_names(tree)
     except FileNotFoundError:
         regression_issue = "missing_test_file"
     except (SyntaxError, UnicodeError):
@@ -333,7 +381,7 @@ def verify(submission, output, image, policy):
             if phase == "contract":
                 tests = ["/grader/" + path for path in contract_tests]
             warning_args = ["-W", "error::pydantic.PydanticDeprecatedSince20"] if WORKFLOW.get("pydantic_warnings_as_errors", ROOT == ENGINE_ROOT) else []
-            completed = docker("exec", name, "python", *warning_args, "-m", "pytest", *tests, "-q", "-p", "no:cacheprovider", "--import-mode=importlib", "--noconftest", "--junitxml=/tmp/report.xml", timeout=policy["verifier_timeout_seconds"], check=False)
+            completed = docker("exec", name, "python", "-m", "pytest", *warning_args, *tests, "-q", "-p", "no:cacheprovider", "--import-mode=importlib", "--noconftest", "--junitxml=/tmp/report.xml", timeout=policy["verifier_timeout_seconds"], check=False)
             (output / f"{phase}.txt").write_text(completed.stdout + completed.stderr, encoding="utf-8")
             report = output / f"{phase}.xml"
             copied = docker("exec", name, "cat", "/tmp/report.xml", check=False)
@@ -342,10 +390,10 @@ def verify(submission, output, image, policy):
                 test_results[phase] = junit_summary(report)
             passed = completed.returncode == 0 and copied.returncode == 0 and junit_passed(report)
             if phase in fault_sources:
-                results[phase] = copied.returncode == 0 and results.get("generated", False) and fault_detected(report, completed.returncode, test_results["generated"])
+                results[phase] = copied.returncode == 0 and results.get("generated", False) and fault_detected(report, completed.returncode, test_results["generated"], behavioral_tests)
             elif phase == "negative_control" and copied.returncode == 0:
                 summary = test_results[phase]
-                results[phase] = completed.returncode != 0 and summary["failed"] > 0 and summary["errors"] == 0 and summary["skipped"] == 0
+                results[phase] = completed.returncode != 0 and summary["failed"] > 0 and summary["errors"] == 0 and summary["skipped"] == 0 and behavioral_failures(report)
             else:
                 results[phase] = passed
             if copied.returncode == 0 and not results[phase]:
@@ -361,7 +409,8 @@ def verify(submission, output, image, policy):
         results["generated"] = False
     fault_checks = {name: passed for name, passed in results.items() if name in fault_sources}
     accepted = all(results.values())
-    return {"accepted": accepted, "category": "accepted" if accepted else regression_issue or "verification_failed", "checks": results, "faults_detected": sum(fault_checks.values()), "faults_total": len(fault_checks), "test_results": test_results, "phase_errors": phase_errors, "regression_issue": regression_issue, "failed_tests": failed_tests, "cleanup_errors": cleanup_errors}
+    category = "accepted" if accepted else "verification_failed" if not results.get("contract") else regression_issue or "verification_failed"
+    return {"accepted": accepted, "category": category, "checks": results, "faults_detected": sum(fault_checks.values()), "faults_total": len(fault_checks), "test_results": test_results, "phase_errors": phase_errors, "regression_issue": regression_issue, "failed_tests": failed_tests, "cleanup_errors": cleanup_errors}
 
 
 def check_submission(container, output, image, policy):
@@ -405,8 +454,6 @@ def read_events(output):
 
 def openai_api_fee(card, events):
     responses = [event for event in events if event["kind"] == "request_end"]
-    if len(responses) != sum(event["kind"] == "request_start" for event in events):
-        return None
     total = 0.0
     threshold = card["long_context_threshold_tokens"]
     for response in responses:
@@ -437,8 +484,6 @@ def api_fee(profile, events):
     if profile["provider"] == "openai":
         return openai_api_fee(profile["rate_card"], events)
     responses = [event for event in events if event["kind"] == "request_end"]
-    if len(responses) != sum(event["kind"] == "request_start" for event in events):
-        return None
     card = profile["rate_card"]
     total = 0.0
     for response in responses:
@@ -510,22 +555,39 @@ def wait_for_worker(connection, started, deadline_seconds, on_submission):
 
 
 def run_attempt(profile, frozen, scored, mock=False):
-    artifacts = ROOT / "artifacts"
+    # One lock per PC: every workflow package shares the engine's artifacts directory.
+    artifacts = ENGINE_ROOT / "artifacts"
     artifacts.mkdir(exist_ok=True)
     active = artifacts / "active-run.json"
     try:
         with active.open("x", encoding="utf-8") as stream:
-            json.dump({"pid": os.getpid()}, stream)
+            json.dump({"pid": os.getpid(), "package": str(ROOT)}, stream)
     except FileExistsError:
-        raise RuntimeError("An active-run lock exists. Do not overlap attempts; check the recorded PID before removing a stale lock.") from None
+        raise RuntimeError(f"An active-run lock exists at {active} (one attempt per PC across all workflows). Do not overlap attempts; check the recorded PID before removing a stale lock.") from None
     try:
         return _run_attempt(profile, frozen, scored, mock)
     finally:
         active.unlink(missing_ok=True)
 
 
+def snapshot_partial_work(container, output):
+    try:
+        if docker("container", "inspect", container, check=False).returncode != 0:
+            return None
+        docker("pause", container, check=False)
+        exported = output / "exported"
+        if not exported.exists():
+            exported.mkdir()
+            docker("cp", container + ":/task/.", exported)
+        if not (output / "submission").exists():
+            collect_submission(exported, output / "submission")
+        return "exported"
+    except (Exception, KeyboardInterrupt) as error:
+        return f"failed:{type(error).__name__}"
+
+
 def _run_attempt(profile, frozen, scored, mock=False):
-    from worker import run_worker
+    from worker import request_settings, run_worker
 
     image = image_id(frozen["image"])
     runner = runner_fingerprint()
@@ -556,7 +618,7 @@ def _run_attempt(profile, frozen, scored, mock=False):
     save(output / "profile.json", {key: value for key, value in profile.items() if key != "mock_commands"})
     save(output / "freeze.json", frozen)
     result = {"attempt_id": output.name, "created_at": datetime.now(timezone.utc).isoformat(), "label": profile["label"], "scored": scored, "mock": mock, "image": image, "runner": runner, "task_hash": task_hash, "profile_hash": hashlib.sha256(json.dumps(profile, sort_keys=True).encode()).hexdigest(), "accepted": False, "category": "preparation_error", "agent_seconds": None, "verifier_seconds": 0, "api_fee_usd": None}
-    result.update(provider=profile["provider"], model=profile.get("model"), submission_checks=0, rejected_submissions=0, submission_check_seconds=0.0, execution_mode="until_verified" if policy["deadline_seconds"] is None else "deadline", deadline_seconds=policy["deadline_seconds"])
+    result.update(provider=profile["provider"], model=profile.get("model"), request_settings=request_settings(profile, policy), submission_checks=0, rejected_submissions=0, submission_check_seconds=0.0, execution_mode="until_verified" if policy["deadline_seconds"] is None else "deadline", deadline_seconds=policy["deadline_seconds"])
     last_review = None
     last_checkpoint = None
 
@@ -641,6 +703,7 @@ def _run_attempt(profile, frozen, scored, mock=False):
         result["category"] = type(error).__name__
         if started is not None and result["agent_seconds"] is None:
             result["agent_seconds"] = time.perf_counter() - started
+        result["snapshot"] = snapshot_partial_work(name, output)
     finally:
         if process.pid is not None and process.is_alive():
             process.terminate()
@@ -661,7 +724,8 @@ def _run_attempt(profile, frozen, scored, mock=False):
         result["tool_calls"] = sum(event["kind"] == "tool_start" for event in events)
         result["failed_tool_calls"] = sum(event["kind"] == "tool_result" and event["returncode"] != 0 for event in events)
         result["api_fee_usd"] = api_fee(profile, events)
-        result["accepted_within_budget"] = result["accepted"] and (policy["deadline_seconds"] is None or result["submission_seconds"] <= policy["deadline_seconds"])
+        result["api_fee_incomplete"] = result["incomplete_request_count"] > 0
+        result["accepted_within_budget"] = result["accepted"] and result.get("exit_status") == "Submitted" and (policy["deadline_seconds"] is None or result["submission_seconds"] <= policy["deadline_seconds"])
         result.setdefault("through_verification_seconds", None)
         result["completion_seconds"] = result["through_verification_seconds"] if result["accepted"] else None
         result["through_cleanup_seconds"] = time.perf_counter() - started if started is not None else None
@@ -691,7 +755,7 @@ def report(directory):
             for key, value in attempt.get("native_usage_totals", {}).items():
                 native_totals[key] = native_totals.get(key, 0) + value
         completion_times = [attempt["completion_seconds"] for attempt in accepted if attempt.get("completion_seconds") is not None]
-        row.update(provider=attempts[0].get("provider"), model=attempts[0].get("model"), execution_mode=attempts[0].get("execution_mode", "legacy_deadline"), deadline_seconds=attempts[0].get("deadline_seconds"), acceptance_rate=len(accepted) / len(attempts), median_completion_seconds=statistics.median(completion_times) if completion_times else None, native_usage_totals=native_totals, usage_complete=all(attempt.get("usage_complete", False) for attempt in attempts), cleanup_failures=sum(bool(attempt.get("cleanup_error") or attempt.get("volume_cleanup_error") or attempt.get("verification", {}).get("cleanup_errors")) for attempt in attempts), contract_passes=sum(attempt.get("verification", {}).get("checks", {}).get("contract", False) for attempt in attempts), generated_test_passes=sum(attempt.get("verification", {}).get("checks", {}).get("generated", False) for attempt in attempts))
+        row.update(provider=attempts[0].get("provider"), model=attempts[0].get("model"), request_settings=attempts[0].get("request_settings"), execution_mode=attempts[0].get("execution_mode", "legacy_deadline"), deadline_seconds=attempts[0].get("deadline_seconds"), acceptance_rate=len(accepted) / len(attempts), median_completion_seconds=statistics.median(completion_times) if completion_times else None, native_usage_totals=native_totals, usage_complete=all(attempt.get("usage_complete", False) for attempt in attempts), cleanup_failures=sum(bool(attempt.get("cleanup_error") or attempt.get("volume_cleanup_error") or attempt.get("verification", {}).get("cleanup_errors")) for attempt in attempts), contract_passes=sum(attempt.get("verification", {}).get("checks", {}).get("contract", False) for attempt in attempts), generated_test_passes=sum(attempt.get("verification", {}).get("checks", {}).get("generated", False) for attempt in attempts))
         row["evaluation_results"] = [{"attempt_id": attempt.get("attempt_id"), "stop_reason": attempt.get("exit_status", attempt["category"]), "checks": attempt.get("verification", {}).get("checks", {}), "faults_detected": attempt.get("verification", {}).get("faults_detected"), "faults_total": attempt.get("verification", {}).get("faults_total"), "test_results": attempt.get("verification", {}).get("test_results", {}), "regression_issue": attempt.get("verification", {}).get("regression_issue"), "phase_errors": attempt.get("verification", {}).get("phase_errors", {}), "submission_violations": attempt.get("submission_violations", [])} for attempt in attempts]
         for metric in ("model_calls", "tool_calls", "failed_tool_calls", "rejected_submissions", "submission_checks", "incomplete_request_count", "normalized_action_response_count", "discarded_action_block_count", "request_seconds", "tool_seconds", "verifier_seconds", "submission_check_seconds"):
             values = [attempt.get(metric) for attempt in attempts]
@@ -703,7 +767,7 @@ def report(directory):
 def main(package_root=None):
     if package_root is not None:
         configure_package(package_root)
-    default_freeze = ROOT / "artifacts" / WORKFLOW.get("default_freeze", "freeze-600s-v9.json")
+    default_freeze = ROOT / "artifacts" / WORKFLOW.get("default_freeze", "freeze-600s-v11.json")
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
     freeze = commands.add_parser("freeze")

@@ -13,6 +13,75 @@ import uuid
 import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).resolve().parent
+REFERENCE_LOADING = "return ExpenseRead.model_validate(record).model_dump(by_alias=True)"
+REFERENCE_RECORD = 'SimpleNamespace(expense_id=7, external_id="seed-7", merchant_code="42", amount_cents=12500, category="work", receipt="R-7", notes=None)'
+
+# Deliberately incorrect repairs of the reference: (file, before, after) or a list of such edits, with the test that must reject them.
+MUTATIONS = {
+    "lost-null-presence": ("routes.py", "exclude_unset=True", "exclude_none=True"),
+    "required-notes": ("schemas.py", "notes: str | None = None", "notes: str | None"),
+    "lost-aliases": ("routes.py", "by_alias=True", "by_alias=False"),
+    "lost-merchant-coercion": ("schemas.py", "return str(value) if isinstance(value, int) and not isinstance(value, bool) else value", "return value"),
+    "receipt-boundary": ("schemas.py", "self.amount_cents > 10000", "self.amount_cents >= 10000"),
+    "receipt-disabled": ("schemas.py", 'self.category == "work"', "False"),
+    "lost-settings-prefix": ("settings.py", 'env_prefix="EXPENSE_"', 'env_prefix="WRONG_"'),
+    "lost-object-loading": ("schemas.py", "from_attributes=True", "from_attributes=False"),
+    "legacy-call": ("routes.py", "expense.model_dump(by_alias=True)", "expense.dict(by_alias=True)"),
+    "compatibility-import": ("schemas.py", "from typing import Literal", "from typing import Literal\nfrom pydantic import v1"),
+    "bypassed-request-model": ("routes.py", "def create_expense(expense: ExpenseCreate):", "def create_expense(expense: dict):"),
+    "hardcoded-object-response": ("routes.py", REFERENCE_LOADING, 'return {"expenseId": 7, "externalId": "seed-7", "merchantCode": "42", "amountCents": 12500, "category": "work", "receipt": "R-7", "notes": None}'),
+    "receipt-stripped": ("schemas.py", "and not self.receipt", 'and not (self.receipt or "").strip()'),
+    "receipt-discarded": ("routes.py", "return expense.model_dump(by_alias=True)", 'return expense.model_dump(by_alias=True) | {"receipt": None}'),
+    "chained-deprecated-dict": ("routes.py", REFERENCE_LOADING, "return ExpenseRead.model_validate(record, from_attributes=True).dict(by_alias=True)"),
+    "integral-float-accepted": [
+        ("schemas.py", 'amount_cents: int = Field(alias="amountCents", strict=True, gt=0, le=10000000)', 'amount_cents: int = Field(alias="amountCents", gt=0, le=10000000)'),
+        ("schemas.py", '    @field_validator("merchant_code", mode="before")', '    @field_validator("amount_cents", mode="before")\n    @classmethod\n    def reject_text_amounts(cls, value):\n        if isinstance(value, (str, bool)):\n            raise ValueError("amountCents must be an integer")\n        return value\n\n    @field_validator("merchant_code", mode="before")'),
+    ],
+    "float-typed-get-response": ("routes.py", REFERENCE_LOADING, 'data = ExpenseRead.model_validate(record).model_dump(by_alias=True)\n    return data | {"expenseId": float(data["expenseId"]), "amountCents": float(data["amountCents"])}'),
+    "normalize-work-only": ("schemas.py", "return value.strip().lower() if isinstance(value, str) else value", 'return "work" if isinstance(value, str) and value.strip().lower() == "work" else value'),
+    "ignore-runtime-record": [
+        ("routes.py", "app = FastAPI()", "app = FastAPI()\nCACHED_EXPENSE = ExpenseRead.model_validate(" + REFERENCE_RECORD + ").model_dump(by_alias=True)"),
+        ("routes.py", "    record = " + REFERENCE_RECORD + "\n    " + REFERENCE_LOADING, "    return dict(CACHED_EXPENSE)"),
+    ],
+}
+EXPECTED_TESTS = {
+    "lost-null-presence": "test_patch_presence",
+    "required-notes": "test_field_names_and_omitted_notes",
+    "lost-aliases": "test_alias_json_values",
+    "lost-merchant-coercion": "test_integer_merchant_codes",
+    "receipt-boundary": "test_receipt_semantics",
+    "receipt-disabled": "test_receipt_semantics",
+    "lost-settings-prefix": "test_startup_settings",
+    "lost-object-loading": "test_object_serialization",
+    "legacy-call": "test_no_legacy_api",
+    "compatibility-import": "test_no_legacy_api",
+    "bypassed-request-model": "test_routes_keep_model_boundaries_and_load_runtime_attributes",
+    "hardcoded-object-response": "test_routes_keep_model_boundaries_and_load_runtime_attributes",
+    "receipt-stripped": "test_receipt_semantics",
+    "receipt-discarded": "test_receipt_semantics",
+    "chained-deprecated-dict": "test_object_serialization",
+    "integral-float-accepted": "test_invalid_inputs",
+    "float-typed-get-response": "test_object_serialization",
+    "normalize-work-only": "test_category_normalization",
+    "ignore-runtime-record": "test_routes_keep_model_boundaries_and_load_runtime_attributes",
+}
+# Functionally equivalent native loading styles that the grader must accept.
+POSITIVE_CONTROLS = {
+    "typeadapter-loading": [
+        ("routes.py", "from app.schemas import ExpenseCreate, ExpensePatch, ExpenseRead", "from pydantic import TypeAdapter\n\nfrom app.schemas import ExpenseCreate, ExpensePatch, ExpenseRead"),
+        ("routes.py", REFERENCE_LOADING, "return TypeAdapter(ExpenseRead).validate_python(record, from_attributes=True).model_dump(by_alias=True)"),
+    ],
+    "constructor-loading": ("routes.py", REFERENCE_LOADING, "return ExpenseRead(**vars(record)).model_dump(by_alias=True)"),
+}
+
+
+def apply_edits(name, source, edits):
+    for filename, before, after in [edits] if isinstance(edits, tuple) else edits:
+        path = source / "app" / filename
+        original = path.read_text(encoding="utf-8")
+        if before not in original:
+            raise RuntimeError(f"Mutation {name} no longer applies")
+        path.write_text(original.replace(before, after), encoding="utf-8")
 
 
 def interpreter(version):
@@ -51,7 +120,9 @@ def check(version, source, native=False, report=None):
     tests = [ROOT / "grader/test_contract.py"]
     if native:
         tests.append(ROOT / "grader/test_native.py")
-    arguments = [interpreter(version), "-W", "error::pydantic.PydanticDeprecatedSince20", "-m", "pytest", *tests, "-q", "-p", "no:cacheprovider", "--import-mode=importlib"]
+    # Same pytest-level filter as the verifier in bench.py; the v1 baseline environment has no such category.
+    warnings = ["-W", "error::pydantic.PydanticDeprecatedSince20"] if version == "v2" else []
+    arguments = [interpreter(version), "-m", "pytest", *warnings, *tests, "-q", "-p", "no:cacheprovider", "--import-mode=importlib"]
     if report is not None:
         arguments.append(f"--junitxml={report}")
     return execute(arguments, source)
@@ -79,22 +150,29 @@ def qualify():
             raise RuntimeError("Environment changed; rerun prepare. " + drift.stderr)
     (artifacts / "inputs.json").write_text(json.dumps(evidence, indent=2), encoding="utf-8")
 
-    def record(name, result, expected_pass):
+    def announce(name):
+        print(f"{name}: {'PASS' if results[name]['qualified'] else 'FAIL'} (exit {results[name]['exit_code']})")
+
+    def record(name, result, expected_pass, verdict=True):
         (artifacts / f"{name}.txt").write_text(result.stdout + result.stderr, encoding="utf-8")
         results[name] = {"exit_code": result.returncode, "expected_pass": expected_pass, "qualified": (result.returncode == 0) == expected_pass}
-        print(f"{name}: {'PASS' if results[name]['qualified'] else 'FAIL'} (exit {result.returncode})")
+        if verdict:
+            announce(name)
 
     def record_check(name, version, source, expected_pass, native=False, expected_test=None):
         report = artifacts / f"{name}.xml"
         outcome = check(version, source, native=native, report=report)
-        record(name, outcome, expected_pass)
+        record(name, outcome, expected_pass, verdict=False)
         cases = list(ET.parse(report).getroot().iter("testcase")) if report.exists() else []
         failures = [case.attrib["name"] for case in cases if case.find("failure") is not None]
         results[name].update(test_count=len(cases), failed_tests=failures)
         if expected_test:
             results[name]["qualified"] = outcome.returncode == 1 and any(expected_test in failure for failure in failures) and not any(case.find("error") is not None for case in cases)
         elif not expected_pass:
-            results[name]["qualified"] = outcome.returncode == 2 and "PydanticUserError" in outcome.stdout and "root_validator" in outcome.stdout
+            # Legacy validators must stop collection: the deprecation filter raises first, otherwise root_validator raises PydanticUserError.
+            legacy_stop = ("PydanticDeprecatedSince20" in outcome.stdout and "validator" in outcome.stdout) or ("PydanticUserError" in outcome.stdout and "root_validator" in outcome.stdout)
+            results[name]["qualified"] = outcome.returncode == 2 and legacy_stop
+        announce(name)
         return outcome
 
     record_check("v1-original", "v1", ROOT / "starter", True)
@@ -108,33 +186,18 @@ def qualify():
         record("codemod-execution", codemod, True)
         record_check("codemod-incomplete", "v2", source, False, native=True)
         shutil.copytree(source / "app", artifacts / "codemod-app")
-    mutations = {
-        "lost-null-presence": ("routes.py", "exclude_unset=True", "exclude_none=True"),
-        "required-notes": ("schemas.py", "notes: str | None = None", "notes: str | None"),
-        "lost-aliases": ("routes.py", "by_alias=True", "by_alias=False"),
-        "lost-merchant-coercion": ("schemas.py", "return str(value) if isinstance(value, int) and not isinstance(value, bool) else value", "return value"),
-        "receipt-boundary": ("schemas.py", "self.amount_cents > 10000", "self.amount_cents >= 10000"),
-        "receipt-disabled": ("schemas.py", 'self.category == "work"', "False"),
-        "lost-settings-prefix": ("settings.py", 'env_prefix="EXPENSE_"', 'env_prefix="WRONG_"'),
-        "lost-object-loading": ("schemas.py", "from_attributes=True", "from_attributes=False"),
-        "legacy-call": ("routes.py", "expense.model_dump(by_alias=True)", "expense.dict(by_alias=True)"),
-            "compatibility-import": ("schemas.py", "from typing import Literal", "from typing import Literal\nfrom pydantic import v1"),
-            "bypassed-request-model": ("routes.py", "def create_expense(expense: ExpenseCreate):", "def create_expense(expense: dict):"),
-            "hardcoded-object-response": ("routes.py", "return ExpenseRead.model_validate(record).model_dump(by_alias=True)", 'return {"expenseId": 7, "externalId": "seed-7", "merchantCode": "42", "amountCents": 12500, "category": "work", "receipt": "R-7", "notes": None}'),
-        "receipt-stripped": ("schemas.py", "and not self.receipt", 'and not (self.receipt or "").strip()'),
-        "receipt-discarded": ("routes.py", "return expense.model_dump(by_alias=True)", 'return expense.model_dump(by_alias=True) | {"receipt": None}'),
-    }
-    expected_tests = {"lost-null-presence": "test_patch_presence", "required-notes": "test_field_names_and_omitted_notes", "lost-aliases": "test_alias_json_values", "lost-merchant-coercion": "test_integer_merchant_codes", "receipt-boundary": "test_receipt_semantics", "receipt-disabled": "test_receipt_semantics", "lost-settings-prefix": "test_startup_settings", "lost-object-loading": "test_object_serialization", "legacy-call": "test_no_legacy_api", "compatibility-import": "test_no_legacy_api", "bypassed-request-model": "test_routes_keep_model_boundaries_and_load_runtime_attributes", "hardcoded-object-response": "test_routes_keep_model_boundaries_and_load_runtime_attributes", "receipt-stripped": "test_receipt_semantics", "receipt-discarded": "test_receipt_semantics"}
-    for name, (filename, before, after) in mutations.items():
+    for name, edits in MUTATIONS.items():
         with tempfile.TemporaryDirectory(prefix="migration-control-") as temporary:
             source = Path(temporary) / "task"
             shutil.copytree(ROOT / "reference", source)
-            path = source / "app" / filename
-            original = path.read_text(encoding="utf-8")
-            if before not in original:
-                raise RuntimeError(f"Mutation {name} no longer applies")
-            path.write_text(original.replace(before, after), encoding="utf-8")
-            record_check(name, "v2", source, False, native=True, expected_test=expected_tests[name])
+            apply_edits(name, source, edits)
+            record_check(name, "v2", source, False, native=True, expected_test=EXPECTED_TESTS[name])
+    for name, edits in POSITIVE_CONTROLS.items():
+        with tempfile.TemporaryDirectory(prefix="migration-positive-") as temporary:
+            source = Path(temporary) / "task"
+            shutil.copytree(ROOT / "reference", source)
+            apply_edits(name, source, edits)
+            record_check(name, "v2", source, True, native=True)
     (artifacts / "qualification.json").write_text(json.dumps(results, indent=2), encoding="utf-8")
     print(f"Evidence: {artifacts}")
     return 0 if all(result["qualified"] for result in results.values()) else 1

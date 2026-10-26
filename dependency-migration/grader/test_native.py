@@ -1,5 +1,7 @@
 import ast
 from pathlib import Path
+import sys
+import types
 from types import SimpleNamespace
 
 import pytest
@@ -35,23 +37,36 @@ def test_routes_keep_model_boundaries_and_load_runtime_attributes(monkeypatch):
     assert routes["/expenses"].dependant.body_params[0].type_ is schemas.ExpenseCreate
     assert routes["/expenses/preview"].dependant.body_params[0].type_ is schemas.ExpensePatch
 
-    original = schemas.ExpenseRead.model_validate.__func__
+    class RuntimeRecord(SimpleNamespace):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            if getattr(self, "expense_id", None) == 7:
+                self.external_id = "runtime-loaded"
 
-    def validate_runtime_record(model, record, *args, **kwargs):
-        record.external_id = "runtime-loaded"
-        return original(model, record, *args, **kwargs)
-
-    monkeypatch.setattr(schemas.ExpenseRead, "model_validate", classmethod(validate_runtime_record))
+    # The service obtains its attribute-based record from SimpleNamespace; patch that source wherever the app binds it.
+    modules = [module for name, module in list(sys.modules.items()) if name == "app" or name.startswith("app.")]
+    for module in [types, *modules]:
+        for name, value in list(vars(module).items()):
+            if value is SimpleNamespace:
+                monkeypatch.setattr(module, name, RuntimeRecord)
+            elif isinstance(value, SimpleNamespace) and getattr(value, "expense_id", None) == 7:
+                monkeypatch.setattr(value, "external_id", "runtime-loaded")
+            elif isinstance(value, dict):
+                for item in value.values():
+                    if isinstance(item, SimpleNamespace) and getattr(item, "expense_id", None) == 7:
+                        monkeypatch.setattr(item, "external_id", "runtime-loaded")
     with TestClient(app) as client:
         response = client.get("/expenses/7")
     assert response.status_code == 200
     assert response.json()["externalId"] == "runtime-loaded"
+    assert response.json()["expenseId"] == 7
 
 
 def test_no_legacy_api():
     root = Path(schemas.__file__).parent
     forbidden_names = {"validator", "root_validator"}
     forbidden_methods = {"dict", "json", "parse_obj", "parse_raw", "parse_file", "from_orm", "construct", "model_construct"}
+    pydantic_only_methods = {"from_orm", "parse_obj", "parse_raw", "parse_file", "construct", "model_construct"}
     for path in root.glob("*.py"):
         tree = ast.parse(path.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
@@ -65,6 +80,6 @@ def test_no_legacy_api():
             if isinstance(node, ast.ClassDef) and node.name in {"ExpenseCreate", "ExpensePatch", "ExpenseRead", "Settings"}:
                 assert not any(isinstance(child, ast.ClassDef) and child.name == "Config" for child in node.body)
             if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
-                assert node.func.attr != "model_construct"
+                assert node.func.attr not in pydantic_only_methods
                 if isinstance(node.func.value, ast.Name) and node.func.value.id in {"expense", "ExpenseCreate", "ExpensePatch", "ExpenseRead", "Settings"}:
                     assert node.func.attr not in forbidden_methods | forbidden_names
