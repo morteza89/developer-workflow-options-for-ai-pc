@@ -9,34 +9,34 @@ Only attempts with a saved freeze identical to the selected GUI freeze are inclu
 
 ## Model Coverage
 
-| Configured model | Provider / model ID | Device / runtime | Matching attempts | Other-freeze attempts | Status |
-| --- | --- | --- | ---: | ---: | --- |
-| b390-morteza89-27b-int4-20261009 | local / qwen3.8-27b-ov | GPU; OVMS 2026.4.0.869b2186; OpenVINO 2026.4.0-22959-99c81491cc3-releases/2026/4; OpenVINO GenAI 2026.4.0.0-3407-7ea2546852a | 1 | 6 | ready |
-| b390-qwen3-8b-int8-20261010 | local / OpenVINO/Qwen3-8B-int8-ov | GPU; OVMS 2026.4.0.869b2186; OpenVINO 2026.4.0-22959-99c81491cc3-releases/2026/4; OpenVINO GenAI 2026.4.0.0-3407-7ea2546852a | 1 | 5 | ready |
-| ptl-openai-gpt-6.1-sol | openai / gpt-6.1-sol | provider-managed; OpenAI Responses API | 0 | 6 | RERUN (6 other freeze) |
-| ptl-openai-gpt-6-astra | openai / gpt-6-astra | provider-managed; OpenAI Responses API | 1 | 0 | ready |
-| b390-qwen3-coder-30b-a3b-int4-20261020 | local / qwen3-coder-30b-a3b-ov | GPU; OVMS 2026.4.0.869b2186; OpenVINO 2026.4.0-22959-99c81491cc3-releases/2026/4; OpenVINO GenAI 2026.4.0.0-3407-7ea2546852a | 2 | 0 | ready |
-| ptl-qwen38-fable5-coding-27b-int4-20261021 | local / qwen38-fable5-int4 | GPU; OVMS 2026.4.0.869b2186; OpenVINO 2026.4.0-22959-99c81491cc3-releases/2026/4; OpenVINO GenAI 2026.4.0.0-3407-7ea2546852a | 1 | 0 | ready |
+| Configured model                           | Provider / model ID               | Device / runtime                                                                                                             | Matching attempts | Other-freeze attempts | Status                 |
+| ------------------------------------------ | --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- | ----------------: | --------------------: | ---------------------- |
+| b390-morteza89-27b-int4-20261009           | local / qwen3.8-27b-ov            | GPU; OVMS 2026.4.0.869b2186; OpenVINO 2026.4.0-22959-99c81491cc3-releases/2026/4; OpenVINO GenAI 2026.4.0.0-3407-7ea2546852a |                 1 |                     6 | ready                  |
+| b390-qwen3-8b-int8-20261010                | local / OpenVINO/Qwen3-8B-int8-ov | GPU; OVMS 2026.4.0.869b2186; OpenVINO 2026.4.0-22959-99c81491cc3-releases/2026/4; OpenVINO GenAI 2026.4.0.0-3407-7ea2546852a |                 1 |                     5 | ready                  |
+| ptl-openai-gpt-6.1-sol                     | openai / gpt-6.1-sol              | provider-managed; OpenAI Responses API                                                                                       |                 0 |                     6 | RERUN (6 other freeze) |
+| ptl-openai-gpt-6-astra                     | openai / gpt-6-astra              | provider-managed; OpenAI Responses API                                                                                       |                 1 |                     0 | ready                  |
+| b390-qwen3-coder-30b-a3b-int4-20261020     | local / qwen3-coder-30b-a3b-ov    | GPU; OVMS 2026.4.0.869b2186; OpenVINO 2026.4.0-22959-99c81491cc3-releases/2026/4; OpenVINO GenAI 2026.4.0.0-3407-7ea2546852a |                 2 |                     0 | ready                  |
+| ptl-qwen38-fable5-coding-27b-int4-20261021 | local / qwen38-fable5-int4        | GPU; OVMS 2026.4.0.869b2186; OpenVINO 2026.4.0-22959-99c81491cc3-releases/2026/4; OpenVINO GenAI 2026.4.0.0-3407-7ea2546852a |                 1 |                     0 | ready                  |
 
 ## Summary
 
-| Model | Provider / model ID | Run type | Task fingerprint | Attempts | Accepted | Acceptance | Median accepted time | Output tokens/s | Contract tests | Generated tests | API fees |
-| --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| b390-morteza89-27b-int4-20261009 | local / qwen3.8-27b-ov | pilot | `9a80903bd1f2` | 1 | 1 | 1/1 (100%) | 502.9s | 6.8 | 39/39 | 13/13 | $0.0000 |
-| b390-qwen3-8b-int8-20261010 | local / OpenVINO/Qwen3-8B-int8-ov | pilot | `9a80903bd1f2` | 1 | 0 | 0/1 (0%) | n/a | 8.5 | 0/2 | 0/0 | $0.0000 |
-| b390-qwen3-coder-30b-a3b-int4-20261020 | local / qwen3-coder-30b-a3b-ov | pilot | `9a80903bd1f2` | 2 | 0 | 0/2 (0%) | n/a | 27.4 | 63/78 | 16/16 | $0.0000 |
-| ptl-openai-gpt-6-astra | openai / gpt-6-astra | pilot | `9a80903bd1f2` | 1 | 1 | 1/1 (100%) | 36.8s | 70.9 | 39/39 | 34/34 | $0.1847 |
-| ptl-qwen38-fable5-coding-27b-int4-20261021 | local / qwen38-fable5-int4 | pilot | `9a80903bd1f2` | 1 | 1 | 1/1 (100%) | 313.9s | 7.2 | 39/39 | 9/9 | $0.0000 |
+| Model                                      | Provider / model ID               | Run type | Task fingerprint | Attempts | Accepted | Acceptance | Median accepted time | Output tokens/s | Contract tests | Generated tests | API fees |
+| ------------------------------------------ | --------------------------------- | -------- | ---------------- | -------: | -------: | ---------: | -------------------: | --------------: | -------------: | --------------: | -------: |
+| b390-morteza89-27b-int4-20261009           | local / qwen3.8-27b-ov            | pilot    | `9a80903bd1f2` |        1 |        1 | 1/1 (100%) |               502.9s |             6.8 |          39/39 |           13/13 |  $0.0000 |
+| b390-qwen3-8b-int8-20261010                | local / OpenVINO/Qwen3-8B-int8-ov | pilot    | `9a80903bd1f2` |        1 |        0 |   0/1 (0%) |                  n/a |             8.5 |            0/2 |             0/0 |  $0.0000 |
+| b390-qwen3-coder-30b-a3b-int4-20261020     | local / qwen3-coder-30b-a3b-ov    | pilot    | `9a80903bd1f2` |        2 |        0 |   0/2 (0%) |                  n/a |            27.4 |          63/78 |           16/16 |  $0.0000 |
+| ptl-openai-gpt-6-astra                     | openai / gpt-6-astra              | pilot    | `9a80903bd1f2` |        1 |        1 | 1/1 (100%) |                36.8s |            70.9 |          39/39 |           34/34 |  $0.1847 |
+| ptl-qwen38-fable5-coding-27b-int4-20261021 | local / qwen38-fable5-int4        | pilot    | `9a80903bd1f2` |        1 |        1 | 1/1 (100%) |               313.9s |             7.2 |          39/39 |             9/9 |  $0.0000 |
 
 ## Attempt Details
 
-| Model | Attempt | Outcome | Stop reason | Agent time | Verified time | Output tokens/s | Contract tests | Generated tests | API fee | Input / output tokens |
-| --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| b390-qwen3-coder-30b-a3b-int4-20261020 | `attempt-1cb8f6af894f46cea82c3f100b6a4ed4` | submission_policy_violation | deadline | 600.1s | 603.8s | 26.9 | 25/39 | 8/8 | $0.0000 | n/a / n/a |
-| b390-qwen3-coder-30b-a3b-int4-20261020 | `attempt-a73cbcfd2b924caa91f0cccf9d8fbec2` | verification_failed | Submitted | 460.2s | 463.7s | 27.9 | 38/39 | 8/8 | $0.0000 | n/a / n/a |
-| b390-morteza89-27b-int4-20261009 | `attempt-94420aa8f4c6461f81ac0cfec58e1151` | accepted | Submitted | 498.9s | 502.9s | 6.8 | 39/39 | 13/13 | $0.0000 | n/a / n/a |
-| b390-qwen3-8b-int8-20261010 | `attempt-3d804f181f8f4608bf7d6325e0e80e27` | missing_regression_assertions | Submitted | 9.9s | 13.3s | 8.5 | 0/2 | 0/0 | $0.0000 | n/a / n/a |
-| ptl-qwen38-fable5-coding-27b-int4-20261021 | `attempt-fad0e58a2c5c4a30b5e8202d7904ed17` | accepted | Submitted | 310.4s | 313.9s | 7.2 | 39/39 | 9/9 | $0.0000 | n/a / n/a |
-| ptl-openai-gpt-6-astra | `attempt-7acf8977b5ac4f998d3d1dd5d6aee602` | accepted | Submitted | 33.3s | 36.8s | 70.9 | 39/39 | 34/34 | $0.1847 | 12672 / 2258 |
+| Model                                      | Attempt                                      | Outcome                       | Stop reason | Agent time | Verified time | Output tokens/s | Contract tests | Generated tests | API fee | Input / output tokens |
+| ------------------------------------------ | -------------------------------------------- | ----------------------------- | ----------- | ---------: | ------------: | --------------: | -------------: | --------------: | ------: | --------------------: |
+| b390-qwen3-coder-30b-a3b-int4-20261020     | `attempt-1cb8f6af894f46cea82c3f100b6a4ed4` | submission_policy_violation   | deadline    |     600.1s |        603.8s |            26.9 |          25/39 |             8/8 | $0.0000 |             n/a / n/a |
+| b390-qwen3-coder-30b-a3b-int4-20261020     | `attempt-a73cbcfd2b924caa91f0cccf9d8fbec2` | verification_failed           | Submitted   |     460.2s |        463.7s |            27.9 |          38/39 |             8/8 | $0.0000 |             n/a / n/a |
+| b390-morteza89-27b-int4-20261009           | `attempt-94420aa8f4c6461f81ac0cfec58e1151` | accepted                      | Submitted   |     498.9s |        502.9s |             6.8 |          39/39 |           13/13 | $0.0000 |             n/a / n/a |
+| b390-qwen3-8b-int8-20261010                | `attempt-3d804f181f8f4608bf7d6325e0e80e27` | missing_regression_assertions | Submitted   |       9.9s |         13.3s |             8.5 |            0/2 |             0/0 | $0.0000 |             n/a / n/a |
+| ptl-qwen38-fable5-coding-27b-int4-20261021 | `attempt-fad0e58a2c5c4a30b5e8202d7904ed17` | accepted                      | Submitted   |     310.4s |        313.9s |             7.2 |          39/39 |             9/9 | $0.0000 |             n/a / n/a |
+| ptl-openai-gpt-6-astra                     | `attempt-7acf8977b5ac4f998d3d1dd5d6aee602` | accepted                      | Submitted   |      33.3s |         36.8s |            70.9 |          39/39 |           34/34 | $0.1847 |          12672 / 2258 |
 
 Output tokens/s is total provider-reported output tokens divided by summed completed model-request wall time (excluding tools and verification); n/a means usage was unavailable. Rates are approximate and may not be directly comparable across tokenizers/providers. Times are runner wall-clock seconds. API fees are estimates from recorded usage; unknown means usage was incomplete. Local API fees exclude hardware and energy costs.
